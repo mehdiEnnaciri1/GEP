@@ -218,6 +218,14 @@ l'image Docker. C'est l'oubli classique, et il ne se voit qu'à l'impression.
 - Comptes réels créés, mots de passe changés
 - Reprise des données existantes du centre, s'il y en a
 - Formation : une session avec la secrétaire sur l'écran de caisse
+- **Si le build (CI ou serveur) tourne derrière un proxy d'entreprise qui inspecte le
+  trafic HTTPS** : le même symptôme qu'à l'étape 0 réapparaîtra
+  (`CERTIFICATE_VERIFY_FAILED` pendant `pip install`, voir
+  `docs/adr/2026-08-13-certificat-racine-build-docker.md`). L'exclusion côté hôte
+  utilisée en développement ne s'applique pas à un environnement de build géré par un
+  tiers : il faudra alors injecter le certificat racine du proxy dans `backend/Dockerfile`
+  via `update-ca-certificates`, à mettre en place **avant** ce déploiement, pas
+  découvert au moment du premier build qui échoue.
 
 ---
 

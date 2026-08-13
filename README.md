@@ -82,3 +82,45 @@ suivantes (`-e ".[dev]"`, etc.) fonctionnent normalement, en ligne, sans aucun
 contournement. Si ce n'est toujours pas le cas sur votre poste, le problème est
 ailleurs (proxy d'entreprise, pare-feu) — dans ce cas, corrigez le magasin de
 certificats de la machine plutôt que de désactiver la vérification TLS.
+
+## Build Docker derrière un filtre TLS local
+
+**Symptôme.** `docker compose up --build` échoue à l'étape `pip install` de
+l'image `api` avec :
+
+```
+SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED]
+certificate verify failed: unable to get local issuer certificate ...'))
+```
+
+Reproductible indépendamment du Dockerfile de GEP, avec l'image officielle nue :
+
+```bash
+docker run --rm python:3.12-slim python -m pip download pip -d /tmp/x
+```
+
+**Cause.** Un antivirus ou un proxy d'entreprise qui inspecte le trafic HTTPS
+(Avast, Kaspersky, ESET, proxy MITM d'entreprise...) re-signe les connexions
+TLS sortantes avec son propre certificat racine. Ce certificat est installé
+dans le magasin de confiance Windows — c'est pour ça que `pip` fonctionne sur
+l'hôte — mais un conteneur Linux a son propre magasin, minimal, qui ne le
+connaît pas. La poignée de main TLS échoue donc uniquement depuis l'intérieur
+des conteneurs, jamais depuis l'hôte.
+
+**Deux remèdes, jamais un troisième.**
+
+1. **Exclusion côté hôte (le remède immédiat).** Configurer l'antivirus ou le
+   proxy pour ne pas inspecter le trafic de Docker Desktop / WSL2. C'est ce qui
+   a résolu le blocage sur ce poste (Avast). Rien à changer dans le projet.
+2. **Injection du certificat racine dans l'image (le remède qui survit à un
+   autre poste, une CI, ou un serveur derrière un proxy d'entreprise).** Copier
+   le certificat racine de l'inspecteur TLS dans l'image et l'enregistrer via
+   `update-ca-certificates` avant tout `pip install`. Pas encore fait dans le
+   Dockerfile de GEP — voir `docs/adr/2026-08-13-certificat-racine-build-docker.md`
+   et le point ouvert de l'étape 10 dans `docs/04-roadmap.md`.
+
+**Ce qu'on ne fait jamais** : `--trusted-host`, `PIP_TRUSTED_HOST`, ou toute
+autre façon de désactiver la vérification TLS dans une image. Un certificat
+racine ajouté au magasin de confiance du conteneur est une extension légitime
+de la confiance ; désactiver la vérification revient à ne plus vérifier du
+tout qui se trouve à l'autre bout de la connexion — y compris en production.
