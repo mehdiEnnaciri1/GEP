@@ -16,7 +16,9 @@ services:
       retries: 10
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     env_file: .env
     depends_on:
       postgres:
@@ -40,7 +42,9 @@ services:
   # défaut : en développement le front tourne nativement (`npm run dev`, HMR),
   # ce service ne sert qu'à vérifier le build de prod. Voir README.
   web:
-    build: ./frontend
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
     profiles: ["full"]
     env_file: .env
     depends_on:

@@ -105,22 +105,45 @@ TLS sortantes avec son propre certificat racine. Ce certificat est installé
 dans le magasin de confiance Windows — c'est pour ça que `pip` fonctionne sur
 l'hôte — mais un conteneur Linux a son propre magasin, minimal, qui ne le
 connaît pas. La poignée de main TLS échoue donc uniquement depuis l'intérieur
-des conteneurs, jamais depuis l'hôte.
+des conteneurs, jamais depuis l'hôte. Diagnostic à confirmer avant de toucher
+à quoi que ce soit :
 
-**Deux remèdes, jamais un troisième.**
+```bash
+docker run --rm python:3.12-slim bash -lc "apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq openssl >/dev/null 2>&1 && echo | openssl s_client -connect pypi.org:443 -servername pypi.org 2>/dev/null | openssl x509 -noout -issuer -subject -dates"
+```
 
-1. **Exclusion côté hôte (le remède immédiat).** Configurer l'antivirus ou le
-   proxy pour ne pas inspecter le trafic de Docker Desktop / WSL2. C'est ce qui
-   a résolu le blocage sur ce poste (Avast). Rien à changer dans le projet.
-2. **Injection du certificat racine dans l'image (le remède qui survit à un
-   autre poste, une CI, ou un serveur derrière un proxy d'entreprise).** Copier
-   le certificat racine de l'inspecteur TLS dans l'image et l'enregistrer via
-   `update-ca-certificates` avant tout `pip install`. Pas encore fait dans le
-   Dockerfile de GEP — voir `docs/adr/2026-08-13-certificat-racine-build-docker.md`
-   et le point ouvert de l'étape 10 dans `docs/04-roadmap.md`.
+Si `issuer` mentionne un antivirus ou une organisation qui n'est pas une
+autorité publique connue, c'est confirmé.
 
-**Ce qu'on ne fait jamais** : `--trusted-host`, `PIP_TRUSTED_HOST`, ou toute
-autre façon de désactiver la vérification TLS dans une image. Un certificat
-racine ajouté au magasin de confiance du conteneur est une extension légitime
-de la confiance ; désactiver la vérification revient à ne plus vérifier du
-tout qui se trouve à l'autre bout de la connexion — y compris en production.
+**Sur ce projet, l'exclusion côté hôte a été tentée et ne suffit pas.**
+Configurer Avast pour exclure Docker Desktop / WSL2 de l'inspection HTTPS, puis
+`wsl --shutdown`, n'a rien changé : le trafic de la VM WSL2 sort par une
+interface réseau virtuelle qu'Avast filtre indépendamment de cette exclusion.
+Le remède retenu est donc l'injection du certificat racine dans l'image —
+voir `docs/adr/2026-08-13-certificat-racine-build-docker.md`.
+
+**Exporter le certificat racine depuis le magasin Windows**, en PEM (le format
+qu'attend `update-ca-certificates`) :
+
+```powershell
+$cert = Get-ChildItem Cert:\LocalMachine\Root, Cert:\CurrentUser\Root |
+    Where-Object Subject -like "*Avast*" | Select-Object -First 1
+$b64 = [Convert]::ToBase64String($cert.RawData, 'InsertLineBreaks')
+"-----BEGIN CERTIFICATE-----`n$b64`n-----END CERTIFICATE-----" |
+    Set-Content -Encoding ascii infra\certs\avast-root.crt
+```
+
+Adapter le filtre `-like "*Avast*"` au nom de l'antivirus ou du proxy concerné.
+Le fichier va dans `infra/certs/` (non versionné, propre à chaque poste — voir
+`.gitignore`). Un `infra/certs/.gitkeep` est tracké pour que le dossier existe
+toujours : `backend/Dockerfile` et `frontend/Dockerfile` y copient son contenu
+avant tout `pip install` / `npm ci`, que le dossier soit vide (rien à ajouter,
+comportement normal sur un poste sans filtre TLS) ou qu'il contienne un
+certificat.
+
+**Ce qu'on ne fait jamais** : `--trusted-host`, `PIP_TRUSTED_HOST`,
+`NODE_TLS_REJECT_UNAUTHORIZED=0`, ou toute autre façon de désactiver la
+vérification TLS dans une image. Un certificat racine ajouté au magasin de
+confiance du conteneur est une extension légitime de la confiance ; désactiver
+la vérification revient à ne plus vérifier du tout qui se trouve à l'autre
+bout de la connexion — y compris en production.

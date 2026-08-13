@@ -4,45 +4,55 @@
 échoué avec `CERTIFICATE_VERIFY_FAILED : unable to get local issuer
 certificate`. Reproduit avec l'image officielle nue
 (`docker run --rm python:3.12-slim python -m pip download pip -d /tmp/x`),
-donc indépendant du Dockerfile de GEP. Diagnostic : la variable d'environnement
-système `SSLKEYLOGFILE=\\.\aswMonFltProxy\...` trahit le pilote réseau
-d'Avast — l'antivirus inspecte le trafic HTTPS sortant en le re-signant avec
-son propre certificat racine. Ce certificat est enregistré dans le magasin de
-confiance Windows (l'hôte valide donc la connexion sans problème), mais un
-conteneur Linux embarque son propre magasin, minimal, qui l'ignore. La
-poignée de main TLS échoue uniquement depuis l'intérieur des conteneurs.
+donc indépendant du Dockerfile de GEP. Diagnostic confirmé par trois vérifications :
+`apt-get update` (HTTP) fonctionne sans problème dans le conteneur — pas de
+panne réseau plus large — ; l'horloge de la VM est correcte ; et surtout,
+`openssl s_client` montre que le certificat présenté pour `pypi.org` est émis
+par `CN=Avast Web/Mail Shield Root` — l'antivirus inspecte le trafic HTTPS
+sortant en le re-signant avec son propre certificat. Ce certificat est
+enregistré dans le magasin de confiance Windows (l'hôte reçoit un 200 sans
+problème), mais un conteneur Linux embarque son propre magasin, minimal, qui
+l'ignore : la poignée de main TLS échoue uniquement depuis l'intérieur des
+conteneurs.
 
-**Décision.** Le remède est d'**ajouter** l'autorité de certification qui
-intercepte le trafic au magasin de confiance du conteneur
-(`update-ca-certificates`, après avoir copié le certificat dans l'image), pas
-de désactiver la vérification TLS. Concrètement, à distinguer :
+**L'exclusion côté hôte a été tentée et ne fonctionne pas.** Configurer
+Avast pour exclure Docker Desktop / WSL2 de l'inspection HTTPS, puis
+`wsl --shutdown` pour forcer la relecture de la règle, n'a rien changé : le
+certificat vu depuis le conteneur reste signé par Avast après coup. Le trafic
+de la VM WSL2 sort par une interface réseau virtuelle qu'Avast filtre
+indépendamment des exclusions applicatives — l'exclusion ne couvre pas ce
+chemin réseau sur ce poste.
 
-- **Root cause locale, remède immédiat** : exclure Docker Desktop / WSL2 de
-  l'inspection HTTPS côté antivirus. C'est ce qui a débloqué ce poste-ci —
-  rien à changer dans le projet, aucune trace dans le Dockerfile.
-- **Remède portable, pas encore implémenté** : si ce projet est buildé sur un
-  autre poste, une CI, ou un serveur derrière un proxy d'entreprise qui fait
-  la même inspection, la même erreur réapparaîtra. Le Dockerfile devra alors
-  copier le certificat racine concerné dans l'image et appeler
-  `update-ca-certificates` avant tout `pip install` — non fait ici : ça
-  élargirait le contexte de build à la racine du dépôt (le certificat n'a pas
-  sa place dans `backend/`) et n'est pas justifié tant que l'exclusion côté
-  hôte suffit. Point ouvert noté dans `docs/04-roadmap.md`, étape 10
-  (déploiement).
+**Décision.** Le remède retenu et implémenté est d'**ajouter** l'autorité de
+certification d'Avast au magasin de confiance du conteneur, jamais de
+désactiver la vérification TLS :
 
-C'est la même distinction que dans `README.md` pour le `pip` de l'hôte
-(bootstrap obsolète, corrigé en mettant `pip` à jour, jamais en désactivant la
-vérification) : un certificat ajouté au magasin de confiance reste une
-vérification réelle contre une autorité explicitement approuvée ; `--trusted-host`
-ou `PIP_TRUSTED_HOST` suppriment la vérification purement et simplement — y
-compris en production, si l'habitude s'installait.
+- Le certificat racine a été exporté (`infra/certs/avast-root.crt`, hors dépôt
+  — voir `.gitignore`).
+- `backend/Dockerfile` le copie dans l'image et appelle
+  `update-ca-certificates`, puis configure `pip` pour utiliser ce magasin
+  système (`pip config set global.cert`) avant tout `pip install`.
+- Même traitement pour `frontend/Dockerfile` (`npm ci`) : Node n'utilise pas le
+  magasin système, d'où `NODE_EXTRA_CA_CERTS` pointé sur le même certificat.
+- Le contexte de build passe à la racine du dépôt (`context: .` dans
+  `docker-compose.yml`) puisque le certificat vit dans `infra/certs/`, hors de
+  `backend/` et `frontend/`.
 
-**Conséquences.** Aucun changement dans `backend/Dockerfile` pour l'instant.
-Le jour où ce symptôme réapparaît (autre poste, CI, serveur de déploiement), le
-diagnostic est déjà écrit : vérifier d'abord si un antivirus/proxy local est en
-cause (variable d'environnement du type `SSLKEYLOGFILE`, ou test direct avec
-l'image officielle nue), avant de toucher au Dockerfile. Si l'exclusion côté
-hôte n'est pas possible sur cet environnement-là (poste d'un autre développeur
-sans droits admin, CI managée, serveur de prod derrière un proxy d'entreprise
-permanent), l'injection du certificat devient nécessaire et devra être en place
-avant le déploiement de l'étape 10.
+Un dossier `infra/certs/` vide (juste un `.gitkeep` tracké) ne casse rien : le
+`COPY` réussit, `update-ca-certificates` n'a simplement rien à ajouter. C'est
+le cas sur toute machine où ce filtre TLS n'existe pas.
+
+**Le principe reste le même** que pour le `pip` obsolète de l'hôte
+(README) : un certificat ajouté au magasin de confiance reste une vérification
+réelle contre une autorité explicitement approuvée. `--trusted-host` ou
+`PIP_TRUSTED_HOST` suppriment la vérification purement et simplement — cette
+option a été explicitement écartée, y compris comme solution temporaire.
+
+**Conséquences.** Le certificat est spécifique à ce poste (et à cet
+antivirus) : il n'est pas versionné, chaque développeur qui rencontre ce
+symptôme exporte le sien (procédure dans `README.md`). Sur un poste sans ce
+filtre TLS, le dossier reste vide et le build n'est pas affecté. Le même
+principe s'appliquera en CI ou en production si l'environnement de build est
+derrière un proxy d'entreprise équivalent (`docs/04-roadmap.md`, étape 10) :
+le certificat de cet environnement-là devra être déposé dans `infra/certs/`
+au moment du déploiement.

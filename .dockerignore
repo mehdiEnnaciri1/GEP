@@ -1,0 +1,22 @@
+# Le contexte de build est maintenant la racine du dépôt (api et web ont
+# besoin d'atteindre infra/certs/, voir docs/adr/2026-08-13-certificat-racine-build-docker.md) :
+# un seul .dockerignore ici, fusion de ce qui était backend/.dockerignore et
+# frontend/.dockerignore, plus les exclusions propres à un contexte plus large.
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# VCS et docs — pas nécessaires dans l'image
+.git/
+docs/
+*.md

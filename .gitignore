@@ -19,6 +19,10 @@ dist/
 .env.local
 *.local
 
+# Certificat racine local (antivirus/proxy qui inspecte HTTPS) — spécifique au
+# poste, jamais dans le dépôt. Voir docs/adr/2026-08-13-certificat-racine-build-docker.md
+infra/certs/*.crt
+
 # Données — jamais dans git
 donnees/
 sauvegardes/
