@@ -27,6 +27,14 @@ services:
     volumes:
       - ./backend:/app
       - donnees_justificatifs:/donnees/justificatifs
+    healthcheck:
+      # Port interne au conteneur (8000, celui d'uvicorn) : le remap 8010 n'existe
+      # que côté hôte, /health reste hors du préfixe /api (voir main.py). Pas de
+      # curl dans l'image : le Python déjà présent suffit.
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   # Build de production (nginx + build statique). Exclu de `docker compose up` par
   # défaut : en développement le front tourne nativement (`npm run dev`, HMR),
