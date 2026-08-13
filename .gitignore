@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# Environnement
+.env
+.env.local
+*.local
+
+# Données — jamais dans git
+donnees/
+sauvegardes/
+*.dump
+*.sql.gz
+
+# Éditeurs / outils locaux
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+.DS_Store
+.claude/

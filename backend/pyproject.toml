@@ -1,0 +1,62 @@
+[project]
+name = "gep-backend"
+version = "0.1.0"
+description = "GEP — API de gestion d'un centre de soutien scolaire"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "sqlalchemy[asyncio]>=2.0",
+    "asyncpg>=0.30",
+    "alembic>=1.13",
+    "argon2-cffi>=23.1",
+    "python-jose[cryptography]>=3.3",
+    "apscheduler>=3.10",
+    "openpyxl>=3.1",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+# Génération des PDF (§9 roadmap). Linux/Docker uniquement : WeasyPrint dépend de
+# Pango/Cairo/GDK-Pixbuf natifs, absents des postes Windows sans installation manuelle
+# du runtime GTK. Voir docs/adr/*-weasyprint-extra-optionnel.md.
+pdf = [
+    "weasyprint>=62.0",
+]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "httpx>=0.27",
+    "testcontainers[postgres]>=4.8",
+    "ruff>=0.7",
+    "mypy>=1.13",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# Fichiers générés par `alembic revision`, suivent le template d'Alembic, pas nos conventions.
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = []
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
