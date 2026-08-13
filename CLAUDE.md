@@ -91,6 +91,9 @@ Ce sont des endpoints séparés, pas un filtrage côté client.
 - Pas de `<form>` HTML natif avec soumission par défaut : React Hook Form et
   gestionnaires `onClick` / `onSubmit` contrôlés.
 - Les schémas Zod reflètent les schémas Pydantic. Si l'un change, l'autre change.
+- Le front appelle toujours l'API en **relatif** (`/api/...`), jamais d'URL absolue,
+  jamais de CORS : même origine via le proxy Vite en dev, via nginx en production.
+  Voir `docs/adr/2026-08-13-meme-origine-proxy-vite.md`.
 
 ---
 
