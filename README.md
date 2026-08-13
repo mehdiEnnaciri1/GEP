@@ -5,13 +5,30 @@ et `docs/` pour le cahier des charges, l'architecture et la roadmap.
 
 ## Démarrage
 
+Deux modes, selon ce que vous voulez vérifier :
+
+**Développement courant** — postgres + api en conteneurs, front en natif (HMR) :
+
 ```bash
 cp .env.example .env   # puis renseigner SECRET_KEY et les mots de passe
-make dev                # postgres + api + web, via docker compose
+make dev                 # docker compose up : postgres + api uniquement
+cd frontend && npm run dev
 ```
 
-`/health` doit répondre sur `http://localhost:8000/health`, le front sur
-`http://localhost:5173`.
+`/health` répond sur `http://localhost:8010/health`. Le front tourne sur
+`http://localhost:5173` et atteint l'API via le proxy Vite `/api` (jamais
+d'URL absolue ni de CORS — voir `docs/adr/2026-08-13-meme-origine-proxy-vite.md`).
+
+**Vérification du build de production** — les trois services en conteneurs,
+web servi par nginx comme en production :
+
+```bash
+docker compose --profile full up --build
+```
+
+Le port hôte de l'API est **8010** (le 8000 est déjà pris par un autre projet
+sur ce poste — voir `docker-compose.yml`), remappé en interne vers le port 8000
+du conteneur, sur lequel `uvicorn` écoute réellement.
 
 ## Si `make` n'est pas installé
 
@@ -21,7 +38,7 @@ disponible sur votre poste, voici l'équivalent de chaque cible du `Makefile` :
 
 | Cible | Commande équivalente |
 |---|---|
-| `make dev` | `docker compose up --build` |
+| `make dev` | `docker compose up --build` (postgres + api ; `web` est exclu par défaut, voir `--profile full` ci-dessus) |
 | `make stop` | `docker compose down` |
 | `make test` | `cd backend && PYTHONIOENCODING=utf-8 .venv/Scripts/python -m pytest -v` puis `cd frontend && npm run test` |
 | `make lint` | `cd backend && .venv/Scripts/python -m ruff check . && .venv/Scripts/python -m mypy app` puis `cd frontend && npm run lint && npx tsc -b` |
@@ -46,16 +63,22 @@ un venv fraîchement créé peut être une version ancienne (ex. 24.0) dont le
 magasin de certificats vendorisé ne valide plus la chaîne TLS actuelle de
 pypi.org (`CERTIFICATE_VERIFY_FAILED`). Le symptôme n'apparaît que sur ce
 premier `pip install` — pas sur une installation Python plus récente ou déjà
-mise à jour ailleurs sur la machine. La correction est de mettre à jour `pip`
-lui-même, en contournant une seule fois la vérification TLS pour cette étape
-précise (c'est un problème d'œuf et de poule : l'ancien pip ne peut pas se
-mettre à jour tout seul via une connexion qu'il ne valide pas) :
+mise à jour ailleurs sur la machine (ex. `py -3.14`, si présente).
+
+Ne contournez **jamais** la vérification TLS (`--trusted-host`) : passez plutôt
+par une installation Python dont le `pip` est déjà à jour et fonctionne, pour
+télécharger la roue de `pip` sans jamais désactiver la vérification :
 
 ```bash
-.venv/Scripts/python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org --upgrade pip
+py -3.14 -m pip download pip -d /tmp/pipwheel
+cd backend
+.venv/Scripts/python -m pip install --no-index --find-links /tmp/pipwheel --upgrade pip
 ```
 
-Une fois `pip` à jour, toutes les installations suivantes (`-e ".[dev]"`, etc.)
-fonctionnent normalement, sans `--trusted-host`. Si ce n'est pas le cas sur
-votre poste, le problème est ailleurs (proxy d'entreprise, pare-feu) : ne pas
-généraliser le contournement à l'ensemble des commandes `pip`.
+(`py -3.14` peut être n'importe quelle autre installation Python déjà fonctionnelle
+sur la machine — celle qui échoue est le `pip` fraîchement bootstrappé du venv,
+pas Python 3.12 lui-même.) Une fois `pip` à jour, toutes les installations
+suivantes (`-e ".[dev]"`, etc.) fonctionnent normalement, en ligne, sans aucun
+contournement. Si ce n'est toujours pas le cas sur votre poste, le problème est
+ailleurs (proxy d'entreprise, pare-feu) — dans ce cas, corrigez le magasin de
+certificats de la machine plutôt que de désactiver la vérification TLS.

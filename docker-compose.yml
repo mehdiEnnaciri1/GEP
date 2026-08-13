@@ -22,13 +22,18 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      # Port hôte 8010 : le 8000 est déjà pris par un autre projet sur ce poste.
+      - "8010:8000"
     volumes:
       - ./backend:/app
       - donnees_justificatifs:/donnees/justificatifs
 
+  # Build de production (nginx + build statique). Exclu de `docker compose up` par
+  # défaut : en développement le front tourne nativement (`npm run dev`, HMR),
+  # ce service ne sert qu'à vérifier le build de prod. Voir README.
   web:
     build: ./frontend
+    profiles: ["full"]
     env_file: .env
     depends_on:
       - api
