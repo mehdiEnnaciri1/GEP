@@ -226,6 +226,15 @@ l'image Docker. C'est l'oubli classique, et il ne se voit qu'à l'impression.
   tiers : il faudra alors injecter le certificat racine du proxy dans `backend/Dockerfile`
   via `update-ca-certificates`, à mettre en place **avant** ce déploiement, pas
   découvert au moment du premier build qui échoue.
+- **La révocation des refresh tokens n'est pas implémentée** (étape 1). Le JWT de
+  rafraîchissement est purement stateless : `/auth/logout` efface le cookie côté
+  client mais n'invalide rien côté serveur. Un refresh token volé ou copié avant
+  la déconnexion reste utilisable jusqu'à son expiration naturelle (7 jours,
+  `REFRESH_TOKEN_JOURS`). À traiter avant la production, par l'une de ces deux
+  voies : une table des tokens révoqués (vérifiée à chaque `/auth/refresh`), ou
+  une colonne `tokens_invalides_avant` sur `utilisateur` comparée au claim `iat`
+  du jeton (plus simple : une seule comparaison, pas de table à purger, mais
+  révoque tous les jetons d'un coup plutôt qu'un seul).
 
 ---
 

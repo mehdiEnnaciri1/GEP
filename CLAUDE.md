@@ -65,6 +65,14 @@ repository.py   → requêtes SQLAlchemy
 - Aucune requête SQLAlchemy dans un router ni dans un service : passe par le repository.
 - Aucune règle métier dans un repository.
 - Aucun modèle ORM retourné par un endpoint : toujours un schéma Pydantic de sortie.
+- **C'est le service qui commite, jamais le router.** Une méthode de service = une
+  transaction complète, commit inclus. Un router qui fait `await session.commit()`
+  après avoir appelé le service ne s'exécute jamais si le service lève une
+  exception métier — tout ce que le service a écrit avant de lever (une entrée
+  d'audit sur un échec, notamment) est alors perdu avec le rollback implicite.
+  Bug réel rencontré à l'étape 1 : une tentative de connexion échouée n'était
+  jamais journalisée, faute de commit atteignable après la levée de
+  `AuthentificationInvalide`.
 
 ### Base de données
 
