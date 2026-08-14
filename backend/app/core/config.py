@@ -8,7 +8,12 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Reglages(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # `.env` vit à la racine du dépôt, pas dans backend/ : toutes les commandes
+    # locales (Makefile, alembic) sont lancées depuis backend/, d'où "../.env".
+    # Dans Docker, ce fichier n'existe pas dans l'image — les variables arrivent
+    # déjà dans l'environnement réel via `env_file` de docker-compose.yml, donc
+    # l'absence de "../.env" y est sans effet.
+    model_config = SettingsConfigDict(env_file="../.env", extra="ignore")
 
     app_env: str = "development"
     secret_key: str

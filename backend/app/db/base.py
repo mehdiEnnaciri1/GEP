@@ -22,3 +22,11 @@ class MixinHorodatage:
     modifie_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+
+# Enregistrement des modèles auprès de `Base.metadata`, pour l'autogenerate
+# d'Alembic (voir la docstring de `Base` ci-dessus). Un import par module, au
+# fil de leur création — jamais retiré, même si le module n'importe rien
+# d'autre d'ici.
+from app.modules.audit import models as _audit_models  # noqa: E402, F401
+from app.modules.auth import models as _auth_models  # noqa: E402, F401

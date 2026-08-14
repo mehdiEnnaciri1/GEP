@@ -50,13 +50,26 @@ class OperationNonAutorisee(ErreurMetier):
     code_http = status.HTTP_403_FORBIDDEN
 
 
+class AuthentificationInvalide(ErreurMetier):
+    """Identifiants incorrects, jeton absent, invalide ou expiré. Distinct
+    d'`OperationNonAutorisee` (403) : ici, l'identité elle-même n'est pas établie."""
+
+    code_http = status.HTTP_401_UNAUTHORIZED
+
+
 def enregistrer_gestionnaires_exceptions(app: FastAPI) -> None:
-    """Branche les quatre catégories d'exceptions métier sur des réponses JSON.
+    """Branche les catégories d'exceptions métier sur des réponses JSON.
 
     À appeler une fois depuis `main.py` à la création de l'application.
     """
 
-    for categorie in (RessourceIntrouvable, ConflitMetier, ValidationMetier, OperationNonAutorisee):
+    for categorie in (
+        RessourceIntrouvable,
+        ConflitMetier,
+        ValidationMetier,
+        OperationNonAutorisee,
+        AuthentificationInvalide,
+    ):
         app.add_exception_handler(categorie, _gestionnaire)
 
 
