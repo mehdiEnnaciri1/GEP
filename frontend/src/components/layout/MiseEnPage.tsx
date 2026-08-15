@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils'
 const LIENS = [
   { vers: '/', libelle: 'Accueil' },
   { vers: '/eleves', libelle: 'Élèves' },
+  { vers: '/impayes', libelle: 'Impayés' },
   { vers: '/referentiel/annees-scolaires', libelle: 'Années scolaires' },
   { vers: '/referentiel/matieres', libelle: 'Matières' },
   { vers: '/referentiel/tarifs', libelle: 'Tarifs' },

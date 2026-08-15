@@ -9,6 +9,8 @@ import { PageConnexion } from '@/features/auth/pages/PageConnexion'
 import { PageCreationEleve } from '@/features/eleves/pages/PageCreationEleve'
 import { PageFicheEleve } from '@/features/eleves/pages/PageFicheEleve'
 import { PageListeEleves } from '@/features/eleves/pages/PageListeEleves'
+import { PageCaisse } from '@/features/paiements/pages/PageCaisse'
+import { PageImpayes } from '@/features/paiements/pages/PageImpayes'
 import { PageAnneesScolaires } from '@/features/referentiel/pages/PageAnneesScolaires'
 import { PageGrilleTarifs } from '@/features/referentiel/pages/PageGrilleTarifs'
 import { PageMatieres } from '@/features/referentiel/pages/PageMatieres'
@@ -46,6 +48,8 @@ function Racine() {
             <Route path="/eleves" element={<PageListeEleves />} />
             <Route path="/eleves/nouveau" element={<PageCreationEleve />} />
             <Route path="/eleves/:id" element={<PageFicheEleve />} />
+            <Route path="/caisse/:id" element={<PageCaisse />} />
+            <Route path="/impayes" element={<PageImpayes />} />
             <Route path="/referentiel/annees-scolaires" element={<PageAnneesScolaires />} />
             <Route path="/referentiel/matieres" element={<PageMatieres />} />
             <Route path="/referentiel/tarifs" element={<PageGrilleTarifs />} />

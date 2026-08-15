@@ -112,10 +112,11 @@ class FraisInscription(Base):
     )
     date_paiement: Mapped[date | None] = mapped_column(Date, nullable=True)
     mode_paiement: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    # ⚠ La table `paiement` n'existe pas encore (étape 4). Colonne nullable,
-    # sans ForeignKey pour l'instant ; la FK sera ajoutée dans une migration
-    # ultérieure quand `paiement` sera créée.
-    paiement_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # FK ajoutée à l'étape 4 (migration dédiée) une fois `paiement` créée —
+    # nullable jusqu'à ce que les frais soient effectivement réglés.
+    paiement_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("paiement.id"), nullable=True
+    )
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

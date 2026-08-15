@@ -27,6 +27,12 @@ class EleveRepository:
         )
         return resultat.scalar_one()
 
+    async def lister_actifs(self) -> list[Eleve]:
+        resultat = await self._session.execute(
+            select(Eleve).where(Eleve.statut == StatutEleve.ACTIF)
+        )
+        return list(resultat.scalars().all())
+
     async def lister(
         self,
         *,

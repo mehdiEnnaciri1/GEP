@@ -1,4 +1,4 @@
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 
 import { Button } from '@/components/ui/button'
 import { useChangerStatutEleve, useEleve } from '@/features/eleves/hooks/useEleves'
@@ -41,7 +41,12 @@ export function PageFicheEleve() {
           </h1>
           <p className="font-mono text-xs text-muted-foreground">{eleve.matricule}</p>
         </div>
-        <span className="rounded-full border px-2 py-1 text-xs">{eleve.statut}</span>
+        <div className="flex items-center gap-2">
+          <span className="rounded-full border px-2 py-1 text-xs">{eleve.statut}</span>
+          <Button asChild size="sm">
+            <Link to={`/caisse/${eleve.id}`}>Caisse</Link>
+          </Button>
+        </div>
       </div>
 
       <section className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
