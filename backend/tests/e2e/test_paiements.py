@@ -9,10 +9,13 @@ frais d'inscription annulé, double annulation refusée.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.audit.models import JournalAudit
 from app.modules.auth.models import RoleUtilisateur
 from tests.factories.referentiel import (
     creer_annee_scolaire,
@@ -115,6 +118,71 @@ class TestGenerationEcheances:
             headers={"Authorization": f"Bearer {jeton}"},
         )
         assert reponse.status_code == 403
+
+    async def test_ignore_les_eleves_actifs_dune_autre_annee_scolaire(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """Correction demandée : un élève ACTIF d'une année scolaire qui n'est
+        plus l'année ACTIVE ne doit pas recevoir d'échéance — seuls les
+        élèves ACTIF de l'année scolaire ACTIVE comptent."""
+        jeton = await _jeton(
+            client, session, role=RoleUtilisateur.ADMIN, email="admin_annee@test.ma"
+        )
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        # Élève créé pendant que l'année A est active.
+        eleve_ancien_id, niveau_code, matiere_id = await _creer_eleve_avec_inscription(
+            client, session, headers, tarif_cents=20000
+        )
+
+        # Une nouvelle année devient active : A n'est plus l'année active.
+        nouvelle_annee = await creer_annee_scolaire(
+            session,
+            libelle="2026-2027",
+            date_debut=date(2026, 9, 1),
+            date_fin=date(2027, 6, 30),
+            active=False,
+        )
+        rep_activation = await client.post(
+            f"/api/referentiel/annees-scolaires/{nouvelle_annee.id}/activer", headers=headers
+        )
+        assert rep_activation.status_code == 200
+
+        await creer_tarif_eleve(
+            session,
+            annee_scolaire_id=nouvelle_annee.id,
+            niveau_code=niveau_code,
+            matiere_id=matiere_id,
+            montant_cents=25000,
+        )
+        eleve_nouveau = await client.post(
+            "/api/eleves",
+            json={
+                "nom": "Bennani",
+                "prenom": "Salma",
+                "telephone_parent": "0611111111",
+                "niveau_code": niveau_code,
+                "date_inscription": "2026-09-10",
+                "matiere_ids": [matiere_id],
+            },
+            headers=headers,
+        )
+        assert eleve_nouveau.status_code == 201
+
+        reponse = await client.post(
+            "/api/paiements/generer-echeances", json={"periode": "2026-10"}, headers=headers
+        )
+        assert reponse.status_code == 200
+        # Une seule échéance générée (le nouvel élève) — l'ancien, ACTIF mais
+        # rattaché à l'année qui n'est plus active, est ignoré.
+        assert reponse.json()["nombre_generees"] == 1
+
+        impayes = await client.get(
+            "/api/paiements/impayes?periode=2026-10", headers=headers
+        )
+        assert len(impayes.json()) == 1
+        assert impayes.json()[0]["eleve_id"] == eleve_nouveau.json()["id"]
+        assert impayes.json()[0]["eleve_id"] != eleve_ancien_id
 
 
 class TestEncaissementFraisInscription:
@@ -473,6 +541,57 @@ class TestAnnulation:
         )
         assert premiere.status_code == 200
         assert seconde.status_code == 409
+
+    async def test_annulation_journalisee_dans_audit(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """Correction demandée : vérifier explicitement que annuler() écrit
+        bien dans journal_audit (action, avant/après, utilisateur, IP) —
+        pas seulement que l'échéance/le paiement changent d'état."""
+        jeton = await _jeton(
+            client, session, role=RoleUtilisateur.ADMIN, email="admin16@test.ma"
+        )
+        headers = {"Authorization": f"Bearer {jeton}"}
+        eleve_id, _, _ = await _creer_eleve_avec_inscription(client, session, headers)
+        paiement = await client.post(
+            "/api/paiements/frais-inscription",
+            json={
+                "eleve_id": eleve_id,
+                "montant_cents": 5000,
+                "mode": "ESPECES",
+                "date_paiement": "2025-09-15",
+            },
+            headers=headers,
+        )
+        paiement_id = paiement.json()["id"]
+
+        await client.post(
+            f"/api/paiements/{paiement_id}/annuler",
+            json={"motif": "remboursement client"},
+            headers=headers,
+        )
+
+        entrees = (
+            (
+                await session.execute(
+                    select(JournalAudit).where(
+                        JournalAudit.action == "ANNULATION",
+                        JournalAudit.entite == "paiement",
+                        JournalAudit.entite_id == paiement_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(entrees) == 1
+        entree = entrees[0]
+        assert entree.utilisateur_id is not None
+        assert entree.apres == {"motif_annulation": "remboursement client"}
+        assert entree.avant == {"annule_le": None}
+        # adresse_ip : le client de test httpx n'a pas d'adresse distante réelle,
+        # mais la colonne doit au moins être accessible sans lever d'erreur.
+        assert hasattr(entree, "adresse_ip")
 
     async def test_caissier_ne_peut_pas_annuler(self, client: AsyncClient, session: AsyncSession):
         jeton_admin = await _jeton(

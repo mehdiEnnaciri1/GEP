@@ -3,7 +3,7 @@ génération du matricule et la copie du tarif sont orchestrées par le service.
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.eleves.models import Eleve, FraisInscription, InscriptionMatiere, StatutEleve
@@ -21,15 +21,19 @@ class EleveRepository:
         await self._session.flush()
         return eleve
 
-    async def compter_matricules_annee(self, annee: int) -> int:
-        resultat = await self._session.execute(
-            select(func.count()).where(Eleve.matricule.like(f"E-{annee}-%"))
-        )
-        return resultat.scalar_one()
+    async def prochain_numero_matricule(self) -> int:
+        """`nextval()` est atomique côté Postgres : deux créations d'élève
+        concurrentes obtiennent toujours deux valeurs distinctes — un
+        `SELECT count(*) + 1` ne le garantirait pas (course possible entre
+        les deux comptages avant que l'une des insertions ne commite)."""
+        resultat = await self._session.execute(text("SELECT nextval('seq_matricule_eleve')"))
+        return int(resultat.scalar_one())
 
-    async def lister_actifs(self) -> list[Eleve]:
+    async def lister_actifs_par_annee(self, annee_scolaire_id: int) -> list[Eleve]:
         resultat = await self._session.execute(
-            select(Eleve).where(Eleve.statut == StatutEleve.ACTIF)
+            select(Eleve).where(
+                Eleve.statut == StatutEleve.ACTIF, Eleve.annee_scolaire_id == annee_scolaire_id
+            )
         )
         return list(resultat.scalars().all())
 

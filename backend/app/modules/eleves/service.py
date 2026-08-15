@@ -52,10 +52,13 @@ class EleveService:
         # Le matricule embarque l'année de DÉBUT de l'année scolaire active (le
         # cahier des charges ne précise pas la règle exacte) : tous les élèves
         # inscrits pendant l'année scolaire 2025-2026 portent E-2025-xxxx, que
-        # l'inscription ait lieu en septembre ou en février.
+        # l'inscription ait lieu en septembre ou en février. Le numéro de
+        # séquence, lui, est global (SEQUENCE Postgres, voir repository) : il
+        # ne repart pas à 1 à chaque nouvelle année, pour rester atomique sous
+        # concurrence.
         annee_matricule = annee_active.date_debut.year
-        compte_existant = await self._eleves.compter_matricules_annee(annee_matricule)
-        matricule = f"E-{annee_matricule}-{compte_existant + 1:04d}"
+        numero = await self._eleves.prochain_numero_matricule()
+        matricule = f"E-{annee_matricule}-{numero:04d}"
 
         eleve = await self._eleves.creer(
             Eleve(

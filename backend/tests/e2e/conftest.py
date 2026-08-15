@@ -100,6 +100,13 @@ async def _vider_toutes_les_tables(moteur: AsyncEngine) -> None:
         await connexion.execute(
             text(f"TRUNCATE TABLE {', '.join(noms_tables)} RESTART IDENTITY CASCADE")
         )
+        # Séquences autonomes (matricule, numéro de reçu) : TRUNCATE ...
+        # RESTART IDENTITY ne les touche pas, elles n'appartiennent à aucune
+        # colonne SERIAL/IDENTITY d'une table tronquée. Sans ce reset, un test
+        # qui vérifie une valeur exacte (ex. "E-2025-0001") dépendrait de
+        # l'ordre d'exécution des tests précédents.
+        await connexion.execute(text("ALTER SEQUENCE seq_matricule_eleve RESTART WITH 1"))
+        await connexion.execute(text("ALTER SEQUENCE seq_numero_recu_paiement RESTART WITH 1"))
 
 
 @pytest_asyncio.fixture

@@ -68,7 +68,12 @@ export function PageImpayes() {
           <tbody>
             {impayes?.map((echeance) => (
               <tr key={echeance.id} className="border-b">
-                <td className="py-2">#{echeance.eleve_id}</td>
+                <td className="py-2">
+                  {echeance.eleve_prenom} {echeance.eleve_nom}
+                  <span className="ml-2 font-mono text-xs text-muted-foreground">
+                    {echeance.eleve_matricule}
+                  </span>
+                </td>
                 <td className="py-2 text-right">{formaterMontant(echeance.montant_du_cents)}</td>
                 <td className="py-2 text-right">{formaterMontant(echeance.montant_paye_cents)}</td>
                 <td className="py-2 text-right">

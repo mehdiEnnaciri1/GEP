@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflitMetier, RessourceIntrouvable, ValidationMetier
 from app.modules.audit.service import journaliser
-from app.modules.eleves.models import StatutFrais
+from app.modules.eleves.models import Eleve, StatutFrais
 from app.modules.eleves.repository import (
     EleveRepository,
     FraisInscriptionRepository,
@@ -32,6 +32,7 @@ from app.modules.paiements.models import (
     TypePaiement,
 )
 from app.modules.paiements.repository import EcheanceRepository, PaiementRepository
+from app.modules.referentiel.repository import AnneeScolaireRepository
 from app.shared.periode import dernier_jour, premier_jour
 
 
@@ -53,10 +54,15 @@ class PaiementService:
         self._eleves = EleveRepository(session)
         self._inscriptions = InscriptionMatiereRepository(session)
         self._frais = FraisInscriptionRepository(session)
+        self._annees = AnneeScolaireRepository(session)
 
     async def _generer_numero_recu(self, annee: int) -> str:
-        compte = await self._paiements.compter_annee(annee)
-        return f"R-{annee}-{compte + 1:06d}"
+        # Numéro global (SEQUENCE Postgres, voir repository) : le préfixe
+        # année reflète la date réelle du paiement, le compteur ne repart pas
+        # à 1 chaque année — nextval() est atomique, un comptage + 1 ne le
+        # serait pas sous deux encaissements simultanés.
+        numero = await self._paiements.prochain_numero_recu()
+        return f"R-{annee}-{numero:06d}"
 
     async def encaisser_frais_inscription(
         self,
@@ -221,8 +227,14 @@ class PaiementService:
         await self._session.commit()
         return paiement
 
-    async def lister_impayes(self, periode: str) -> list[Echeance]:
-        return await self._echeances.lister_impayes(periode)
+    async def lister_impayes(self, periode: str) -> list[tuple[Echeance, Eleve]]:
+        echeances = await self._echeances.lister_impayes(periode)
+        resultat: list[tuple[Echeance, Eleve]] = []
+        for echeance in echeances:
+            eleve = await self._eleves.get_by_id(echeance.eleve_id)
+            assert eleve is not None  # intégrité référentielle garantie par la FK
+            resultat.append((echeance, eleve))
+        return resultat
 
     async def historique_eleve(self, eleve_id: int) -> list[Paiement]:
         return await self._paiements.lister_par_eleve(eleve_id)
@@ -230,11 +242,21 @@ class PaiementService:
     async def generer_echeances(
         self, periode: str, utilisateur_id: int, adresse_ip: str | None
     ) -> int:
+        annee_active = next((a for a in await self._annees.lister() if a.est_active), None)
+        if annee_active is None:
+            raise ValidationMetier(
+                "Aucune année scolaire active — impossible de générer les échéances."
+            )
+
         borne_debut = premier_jour(periode)
         borne_fin = dernier_jour(periode)
         compteur = 0
 
-        for eleve in await self._eleves.lister_actifs():
+        # Seuls les élèves ACTIF de l'année scolaire ACTIVE — pas tous les
+        # élèves actifs toutes années confondues (un élève d'une année passée
+        # reste ACTIF tant qu'il n'est pas archivé, il ne doit pas recevoir
+        # d'échéance sur une période qui n'est plus la sienne).
+        for eleve in await self._eleves.lister_actifs_par_annee(annee_active.id):
             if await self._echeances.get_by_eleve_et_periode(eleve.id, periode) is not None:
                 continue
 

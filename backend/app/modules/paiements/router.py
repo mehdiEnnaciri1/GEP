@@ -17,7 +17,7 @@ from app.db.session import get_session
 from app.modules.auth.models import RoleUtilisateur, Utilisateur
 from app.modules.paiements.schemas import (
     AnnulationPaiement,
-    EcheancePublique,
+    EcheanceImpayeePublique,
     EncaissementFraisInscription,
     EncaissementMensualite,
     GenerationEcheancesReponse,
@@ -101,14 +101,27 @@ async def historique_paiements(
     return [PaiementPublique.model_validate(p) for p in paiements]
 
 
-@router.get("/impayes", response_model=list[EcheancePublique])
+@router.get("/impayes", response_model=list[EcheanceImpayeePublique])
 async def lister_impayes(
     periode: str,
     session: AsyncSession = Depends(get_session),
     _utilisateur: Utilisateur = Depends(_ENCAISSER),
-) -> list[EcheancePublique]:
-    echeances = await PaiementService(session).lister_impayes(periode)
-    return [EcheancePublique.model_validate(e) for e in echeances]
+) -> list[EcheanceImpayeePublique]:
+    echeances_et_eleves = await PaiementService(session).lister_impayes(periode)
+    return [
+        EcheanceImpayeePublique(
+            id=echeance.id,
+            eleve_id=echeance.eleve_id,
+            periode=echeance.periode,
+            montant_du_cents=echeance.montant_du_cents,
+            montant_paye_cents=echeance.montant_paye_cents,
+            statut=echeance.statut,
+            eleve_nom=eleve.nom,
+            eleve_prenom=eleve.prenom,
+            eleve_matricule=eleve.matricule,
+        )
+        for echeance, eleve in echeances_et_eleves
+    ]
 
 
 @router.post("/generer-echeances", response_model=GenerationEcheancesReponse)

@@ -24,3 +24,9 @@ export interface Echeance {
   montant_paye_cents: number
   statut: StatutEcheance
 }
+
+export interface EcheanceImpayee extends Echeance {
+  eleve_nom: string
+  eleve_prenom: string
+  eleve_matricule: string
+}

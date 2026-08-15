@@ -55,6 +55,15 @@ class EcheancePublique(BaseModel):
     statut: StatutEcheance
 
 
+class EcheanceImpayeePublique(EcheancePublique):
+    """Étend EcheancePublique avec de quoi identifier l'élève à l'écran —
+    afficher un simple ID sur un tableau d'impayés n'est pas exploitable."""
+
+    eleve_nom: str
+    eleve_prenom: str
+    eleve_matricule: str
+
+
 class GenerationEcheancesRequete(BaseModel):
     periode: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
 

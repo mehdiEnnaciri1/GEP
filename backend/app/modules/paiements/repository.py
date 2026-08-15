@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.paiements.models import Echeance, LigneEcheance, Paiement, StatutEcheance
@@ -61,11 +61,12 @@ class PaiementRepository:
         await self._session.flush()
         return paiement
 
-    async def compter_annee(self, annee: int) -> int:
-        resultat = await self._session.execute(
-            select(func.count()).where(Paiement.numero_recu.like(f"R-{annee}-%"))
-        )
-        return resultat.scalar_one()
+    async def prochain_numero_recu(self) -> int:
+        """Même principe que `EleveRepository.prochain_numero_matricule` :
+        `nextval()` atomique, pas un comptage sujet à une course entre deux
+        encaissements simultanés."""
+        resultat = await self._session.execute(text("SELECT nextval('seq_numero_recu_paiement')"))
+        return int(resultat.scalar_one())
 
     async def lister_par_eleve(self, eleve_id: int) -> list[Paiement]:
         resultat = await self._session.execute(
