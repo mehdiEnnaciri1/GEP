@@ -1,13 +1,23 @@
 """Fixtures partagées aux tests e2e (endpoints via httpx, sur une vraie base).
 
-Un vrai Postgres (testcontainers), migré une fois par session de tests. Chaque
-test reçoit une session et un client HTTP propres ; les tables sont vidées
-après chaque test pour l'isolation (les endpoints commitent eux-mêmes, un
-simple rollback ne suffirait pas).
+Deux modes, sélectionnés par la variable d'environnement `GEP_TEST_DATABASE_URL` :
+
+- **définie** : on s'y connecte directement, aucun conteneur démarré. C'est le
+  mode à utiliser en local tant que Docker Desktop est instable sur ce poste —
+  voir README.md pour créer la base de test et l'URL à exporter.
+- **absente** : repli sur testcontainers (un vrai Postgres jetable), le bon
+  défaut en CI où Docker est fiable et où il n'y a pas de base de dev à
+  préserver.
+
+Dans les deux cas, les migrations sont jouées une fois par session de tests,
+puis chaque test reçoit une session et un client HTTP propres ; les tables
+sont vidées après chaque test pour l'isolation (les endpoints commitent
+eux-mêmes, un simple rollback ne suffirait pas).
 
 Volontairement dans `tests/e2e/`, pas à la racine de `tests/` : un conftest
-racine avec cette fixture en `autouse` ferait démarrer un conteneur Postgres
-même pour les tests unitaires purs de `tests/unit/`, qui n'en ont pas besoin.
+racine avec ces fixtures en `autouse` ferait démarrer un conteneur Postgres
+(ou exiger `GEP_TEST_DATABASE_URL`) même pour les tests unitaires purs de
+`tests/unit/`, qui n'en ont pas besoin.
 """
 
 from __future__ import annotations
@@ -33,15 +43,34 @@ from alembic import command
 
 _RACINE_BACKEND = Path(__file__).resolve().parent.parent.parent
 
+# app.db.session (importé dès que app.main l'est, via les routers) construit
+# un moteur à partir de obtenir_reglages() au moment de l'import — valeurs
+# bidon, jamais utilisées pour une vraie connexion : le client de test et la
+# fixture `session` ci-dessous construisent leur propre moteur à partir de
+# l'URL réelle (GEP_TEST_DATABASE_URL ou conteneur).
+os.environ.setdefault("SECRET_KEY", "cle-de-test-jamais-utilisee-en-production")
+os.environ.setdefault("POSTGRES_USER", "test")
+os.environ.setdefault("POSTGRES_PASSWORD", "test")
+os.environ.setdefault("POSTGRES_DB", "test")
+os.environ.setdefault("POSTGRES_HOST", "localhost")
+
 
 @pytest.fixture(scope="session")
-def _conteneur_postgres() -> Iterator[PostgresContainer]:
+def _conteneur_postgres() -> Iterator[PostgresContainer | None]:
+    if os.environ.get("GEP_TEST_DATABASE_URL"):
+        yield None
+        return
     with PostgresContainer("postgres:16") as conteneur:
         yield conteneur
 
 
 @pytest.fixture(scope="session")
-def _url_asyncpg(_conteneur_postgres: PostgresContainer) -> str:
+def _url_asyncpg(_conteneur_postgres: PostgresContainer | None) -> str:
+    url_env = os.environ.get("GEP_TEST_DATABASE_URL")
+    if url_env:
+        return url_env
+
+    assert _conteneur_postgres is not None
     return (
         f"postgresql+asyncpg://{_conteneur_postgres.username}:{_conteneur_postgres.password}"
         f"@{_conteneur_postgres.get_container_host_ip()}"
@@ -50,23 +79,16 @@ def _url_asyncpg(_conteneur_postgres: PostgresContainer) -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _migrer_base_test(_conteneur_postgres: PostgresContainer) -> None:
-    """Pointe les réglages de l'appli sur le conteneur de test, puis joue les
-    migrations Alembic — une fois pour toute la session de tests."""
-
-    os.environ["POSTGRES_HOST"] = _conteneur_postgres.get_container_host_ip()
-    os.environ["POSTGRES_PORT"] = str(_conteneur_postgres.get_exposed_port(5432))
-    os.environ["POSTGRES_USER"] = _conteneur_postgres.username
-    os.environ["POSTGRES_PASSWORD"] = _conteneur_postgres.password
-    os.environ["POSTGRES_DB"] = _conteneur_postgres.dbname
-    os.environ.setdefault("SECRET_KEY", "cle-de-test-jamais-utilisee-en-production")
-
-    from app.core.config import obtenir_reglages
-
-    obtenir_reglages.cache_clear()
+def _migrer_base_test(_url_asyncpg: str) -> None:
+    """Joue les migrations Alembic sur la base de test, une fois par session.
+    L'URL est posée directement sur la config Alembic (alembic/env.py respecte
+    une `sqlalchemy.url` déjà définie plutôt que de la recalculer depuis
+    obtenir_reglages()) — pas de bricolage de POSTGRES_HOST/PORT/USER dans
+    os.environ."""
 
     config = Config(str(_RACINE_BACKEND / "alembic.ini"))
     config.set_main_option("script_location", str(_RACINE_BACKEND / "alembic"))
+    config.set_main_option("sqlalchemy.url", _url_asyncpg)
     command.upgrade(config, "head")
 
 

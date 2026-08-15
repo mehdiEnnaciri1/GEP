@@ -83,6 +83,49 @@ contournement. Si ce n'est toujours pas le cas sur votre poste, le problème est
 ailleurs (proxy d'entreprise, pare-feu) — dans ce cas, corrigez le magasin de
 certificats de la machine plutôt que de désactiver la vérification TLS.
 
+## Tests e2e du backend (`tests/e2e/`)
+
+Ces tests ont besoin d'un vrai Postgres — jamais de mock pour ce qui touche à
+la base. Deux modes, choisis par la variable d'environnement
+`GEP_TEST_DATABASE_URL` :
+
+**Base de test dédiée (recommandé en local, surtout si Docker Desktop est
+instable sur ce poste)** — pas de conteneur à démarrer par test, juste une
+connexion à une base déjà là :
+
+```bash
+docker compose exec postgres psql -U gep -c "CREATE DATABASE gep_test;"
+export GEP_TEST_DATABASE_URL="postgresql+asyncpg://gep:<mot-de-passe-de-.env>@localhost:5432/gep_test"
+cd backend && PYTHONIOENCODING=utf-8 .venv/Scripts/python -m pytest tests/e2e -v
+```
+
+**`gep_test` doit être une base distincte de la base de dev** (`gep`) : les
+tests vident toutes les tables après chaque test (`TRUNCATE ... CASCADE`) —
+pointer `GEP_TEST_DATABASE_URL` sur la base de dev effacerait vos données de
+développement à la première exécution.
+
+**Si la commande ci-dessus échoue avec `ConnectionDoesNotExistError` /
+`ConnectionResetError` (WinError 64)** : c'est le chemin réseau hôte → conteneur
+qui est instable sur ce poste (Docker Desktop/WSL2), pas un problème de code —
+déjà rencontré plusieurs fois pendant le développement. Le contournement fiable
+est de lancer pytest **depuis l'intérieur du conteneur `api`**, qui parle à
+postgres par le réseau Docker interne (`postgres:5432`, jamais `localhost`) :
+
+```bash
+docker compose exec -e GEP_TEST_DATABASE_URL="postgresql+asyncpg://gep:<mot-de-passe-de-.env>@postgres:5432/gep_test" api python -m pytest tests/e2e -v
+```
+
+**testcontainers (par défaut, sans la variable)** — un Postgres jetable démarré
+et détruit pour la session de tests, le bon choix en CI où Docker est fiable et
+où il n'y a pas de base de dev à préserver :
+
+```bash
+cd backend && PYTHONIOENCODING=utf-8 .venv/Scripts/python -m pytest tests/e2e -v
+```
+
+Dans les deux cas, les migrations Alembic sont jouées une fois au début de la
+session de tests, sur la base ciblée.
+
 ## Build Docker derrière un filtre TLS local
 
 **Symptôme.** `docker compose up --build` échoue à l'étape `pip install` de

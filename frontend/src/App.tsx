@@ -3,28 +3,30 @@ import { BrowserRouter, Route, Routes } from 'react-router-dom'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-import { Button } from '@/components/ui/button'
+import { MiseEnPage } from '@/components/layout/MiseEnPage'
 import { useInitialiserSession } from '@/features/auth/hooks/useInitialiserSession'
-import { useLogout } from '@/features/auth/hooks/useLogout'
 import { PageConnexion } from '@/features/auth/pages/PageConnexion'
+import { PageCreationEleve } from '@/features/eleves/pages/PageCreationEleve'
+import { PageFicheEleve } from '@/features/eleves/pages/PageFicheEleve'
+import { PageListeEleves } from '@/features/eleves/pages/PageListeEleves'
+import { PageAnneesScolaires } from '@/features/referentiel/pages/PageAnneesScolaires'
+import { PageGrilleTarifs } from '@/features/referentiel/pages/PageGrilleTarifs'
+import { PageMatieres } from '@/features/referentiel/pages/PageMatieres'
+import { PageParametres } from '@/features/referentiel/pages/PageParametres'
 import { RouteProtegee } from '@/routes/RouteProtegee'
 import { useSessionStore } from '@/stores/session'
 
 function PageAccueil() {
   const utilisateur = useSessionStore((s) => s.utilisateur)
-  const deconnexion = useLogout()
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center gap-4">
+    <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center gap-2">
       <p className="text-muted-foreground text-sm">GEP — Gestion des Élèves et des Paiements</p>
       {utilisateur && (
         <p className="text-sm">
           Connecté en tant que {utilisateur.prenom} {utilisateur.nom} ({utilisateur.role})
         </p>
       )}
-      <Button variant="outline" onClick={() => deconnexion.mutate()} disabled={deconnexion.isPending}>
-        Se déconnecter
-      </Button>
     </div>
   )
 }
@@ -39,7 +41,16 @@ function Racine() {
       <Routes>
         <Route path="/connexion" element={<PageConnexion />} />
         <Route element={<RouteProtegee />}>
-          <Route path="/" element={<PageAccueil />} />
+          <Route element={<MiseEnPage />}>
+            <Route path="/" element={<PageAccueil />} />
+            <Route path="/eleves" element={<PageListeEleves />} />
+            <Route path="/eleves/nouveau" element={<PageCreationEleve />} />
+            <Route path="/eleves/:id" element={<PageFicheEleve />} />
+            <Route path="/referentiel/annees-scolaires" element={<PageAnneesScolaires />} />
+            <Route path="/referentiel/matieres" element={<PageMatieres />} />
+            <Route path="/referentiel/tarifs" element={<PageGrilleTarifs />} />
+            <Route path="/referentiel/parametres" element={<PageParametres />} />
+          </Route>
         </Route>
       </Routes>
     </BrowserRouter>

@@ -23,8 +23,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 # L'URL de connexion vient des réglages de l'application, jamais dupliquée
-# dans alembic.ini.
-config.set_main_option("sqlalchemy.url", obtenir_reglages().url_base_donnees)
+# dans alembic.ini — sauf si l'appelant l'a déjà posée explicitement (tests
+# e2e pointant sur une base de test dédiée, voir tests/e2e/conftest.py) : dans
+# ce cas on la respecte plutôt que d'aller lire obtenir_reglages(), qui exigerait
+# des POSTGRES_* sans rapport avec la base réellement ciblée par les tests.
+if not config.get_main_option("sqlalchemy.url"):
+    config.set_main_option("sqlalchemy.url", obtenir_reglages().url_base_donnees)
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
