@@ -11,6 +11,9 @@ import { PageFicheEleve } from '@/features/eleves/pages/PageFicheEleve'
 import { PageListeEleves } from '@/features/eleves/pages/PageListeEleves'
 import { PageCaisse } from '@/features/paiements/pages/PageCaisse'
 import { PageImpayes } from '@/features/paiements/pages/PageImpayes'
+import { PageFicheProfesseur } from '@/features/professeurs/pages/PageFicheProfesseur'
+import { PageListeProfesseurs } from '@/features/professeurs/pages/PageListeProfesseurs'
+import { PageMatriceAffectations } from '@/features/professeurs/pages/PageMatriceAffectations'
 import { PageAnneesScolaires } from '@/features/referentiel/pages/PageAnneesScolaires'
 import { PageGrilleTarifs } from '@/features/referentiel/pages/PageGrilleTarifs'
 import { PageMatieres } from '@/features/referentiel/pages/PageMatieres'
@@ -50,6 +53,9 @@ function Racine() {
             <Route path="/eleves/:id" element={<PageFicheEleve />} />
             <Route path="/caisse/:id" element={<PageCaisse />} />
             <Route path="/impayes" element={<PageImpayes />} />
+            <Route path="/professeurs" element={<PageListeProfesseurs />} />
+            <Route path="/professeurs/:id" element={<PageFicheProfesseur />} />
+            <Route path="/affectations" element={<PageMatriceAffectations />} />
             <Route path="/referentiel/annees-scolaires" element={<PageAnneesScolaires />} />
             <Route path="/referentiel/matieres" element={<PageMatieres />} />
             <Route path="/referentiel/tarifs" element={<PageGrilleTarifs />} />

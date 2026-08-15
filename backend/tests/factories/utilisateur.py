@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.security import hacher_mot_de_passe
 from app.modules.auth.models import RoleUtilisateur, Utilisateur
+from app.modules.professeurs.models import Professeur
 
 MOT_DE_PASSE_TEST = "mot-de-passe-de-test-1234"
 
 
-def construire_utilisateur(
+async def construire_utilisateur(
+    session: AsyncSession,
     *,
     email: str,
     role: RoleUtilisateur = RoleUtilisateur.CAISSIER,
@@ -19,10 +23,13 @@ def construire_utilisateur(
     professeur_id: int | None = None,
 ) -> Utilisateur:
     # ck_prof_lie : professeur_id obligatoire si et seulement si role=PROFESSEUR.
-    # La table `professeur` n'existe pas encore (étape 5) donc pas de FK à
-    # respecter ici — n'importe quel entier convient pour les tests.
+    # Depuis l'étape 5, professeur_id porte une vraie ForeignKey — il faut donc
+    # une ligne `professeur` existante, pas un entier arbitraire.
     if professeur_id is None and role == RoleUtilisateur.PROFESSEUR:
-        professeur_id = 1
+        professeur = Professeur(nom=nom, prenom=prenom, telephone="0600000000")
+        session.add(professeur)
+        await session.flush()
+        professeur_id = professeur.id
 
     return Utilisateur(
         nom=nom,

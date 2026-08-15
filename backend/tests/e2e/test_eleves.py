@@ -24,7 +24,7 @@ from tests.factories.utilisateur import MOT_DE_PASSE_TEST, construire_utilisateu
 async def _jeton(
     client: AsyncClient, session: AsyncSession, *, role: RoleUtilisateur, email: str
 ) -> str:
-    utilisateur = construire_utilisateur(email=email, role=role)
+    utilisateur = await construire_utilisateur(session, email=email, role=role)
     session.add(utilisateur)
     await session.commit()
 
@@ -85,9 +85,7 @@ class TestCreationEleve:
         assert corps["frais_inscription"]["montant_cents"] == 5000
         assert corps["frais_inscription"]["statut"] == "NON_PAYE"
 
-    async def test_matricule_incremente_par_annee(
-        self, client: AsyncClient, session: AsyncSession
-    ):
+    async def test_matricule_incremente_par_annee(self, client: AsyncClient, session: AsyncSession):
         _, niveau_code, matiere_id = await _preparer_referentiel(session)
         jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin2@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
@@ -211,9 +209,7 @@ class TestListeEtFiltres:
         assert reponse.json()["total"] == 1
         assert reponse.json()["elements"][0]["nom"] == "Alaoui"
 
-        reponse_niveau = await client.get(
-            f"/api/eleves?niveau_code={niveau_code}", headers=headers
-        )
+        reponse_niveau = await client.get(f"/api/eleves?niveau_code={niveau_code}", headers=headers)
         assert reponse_niveau.json()["total"] == 2
 
     async def test_pagination(self, client: AsyncClient, session: AsyncSession):
@@ -248,8 +244,6 @@ class TestChangementStatut:
         assert reponse.status_code == 200
         assert reponse.json()["statut"] == "ARCHIVE"
 
-    async def test_caissier_ne_peut_pas_changer_statut_sans_jeton_valide(
-        self, client: AsyncClient
-    ):
+    async def test_caissier_ne_peut_pas_changer_statut_sans_jeton_valide(self, client: AsyncClient):
         reponse = await client.post("/api/eleves/1/statut", json={"statut": "ARCHIVE"})
         assert reponse.status_code == 401

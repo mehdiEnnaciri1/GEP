@@ -9,6 +9,8 @@ const LIENS = [
   { vers: '/', libelle: 'Accueil' },
   { vers: '/eleves', libelle: 'Élèves' },
   { vers: '/impayes', libelle: 'Impayés' },
+  { vers: '/professeurs', libelle: 'Professeurs' },
+  { vers: '/affectations', libelle: 'Affectations' },
   { vers: '/referentiel/annees-scolaires', libelle: 'Années scolaires' },
   { vers: '/referentiel/matieres', libelle: 'Matières' },
   { vers: '/referentiel/tarifs', libelle: 'Tarifs' },

@@ -16,7 +16,7 @@ from tests.factories.utilisateur import MOT_DE_PASSE_TEST, construire_utilisateu
 async def _creer_et_connecter(
     client: AsyncClient, session: AsyncSession, *, role: RoleUtilisateur, email: str
 ) -> str:
-    utilisateur = construire_utilisateur(email=email, role=role)
+    utilisateur = await construire_utilisateur(session, email=email, role=role)
     session.add(utilisateur)
     await session.commit()
 
@@ -29,7 +29,9 @@ async def _creer_et_connecter(
 
 class TestLogin:
     async def test_identifiants_valides(self, client: AsyncClient, session: AsyncSession):
-        utilisateur = construire_utilisateur(email="admin@test.ma", role=RoleUtilisateur.ADMIN)
+        utilisateur = await construire_utilisateur(
+            session, email="admin@test.ma", role=RoleUtilisateur.ADMIN
+        )
         session.add(utilisateur)
         await session.commit()
 
@@ -46,7 +48,7 @@ class TestLogin:
         assert "refresh_token" in reponse.cookies
 
     async def test_mauvais_mot_de_passe(self, client: AsyncClient, session: AsyncSession):
-        utilisateur = construire_utilisateur(email="admin2@test.ma")
+        utilisateur = await construire_utilisateur(session, email="admin2@test.ma")
         session.add(utilisateur)
         await session.commit()
 
@@ -66,7 +68,7 @@ class TestLogin:
         assert reponse.status_code == 401
 
     async def test_utilisateur_inactif(self, client: AsyncClient, session: AsyncSession):
-        utilisateur = construire_utilisateur(email="inactif@test.ma", actif=False)
+        utilisateur = await construire_utilisateur(session, email="inactif@test.ma", actif=False)
         session.add(utilisateur)
         await session.commit()
 
@@ -78,7 +80,7 @@ class TestLogin:
         assert reponse.status_code == 401
 
     async def test_connexion_reussie_journalisee(self, client: AsyncClient, session: AsyncSession):
-        utilisateur = construire_utilisateur(email="journal@test.ma")
+        utilisateur = await construire_utilisateur(session, email="journal@test.ma")
         session.add(utilisateur)
         await session.commit()
 
@@ -96,7 +98,7 @@ class TestLogin:
         assert entrees[0].entite == "utilisateur"
 
     async def test_connexion_echouee_journalisee(self, client: AsyncClient, session: AsyncSession):
-        utilisateur = construire_utilisateur(email="echec@test.ma")
+        utilisateur = await construire_utilisateur(session, email="echec@test.ma")
         session.add(utilisateur)
         await session.commit()
 
@@ -127,9 +129,7 @@ class TestMe:
             client, session, role=RoleUtilisateur.CAISSIER, email="me@test.ma"
         )
 
-        reponse = await client.get(
-            "/api/auth/me", headers={"Authorization": f"Bearer {jeton}"}
-        )
+        reponse = await client.get("/api/auth/me", headers={"Authorization": f"Bearer {jeton}"})
 
         assert reponse.status_code == 200
         assert reponse.json()["email"] == "me@test.ma"
@@ -147,7 +147,7 @@ class TestRefresh:
         assert reponse.status_code == 401
 
     async def test_avec_cookie_valide(self, client: AsyncClient, session: AsyncSession):
-        utilisateur = construire_utilisateur(email="refresh@test.ma")
+        utilisateur = await construire_utilisateur(session, email="refresh@test.ma")
         session.add(utilisateur)
         await session.commit()
 

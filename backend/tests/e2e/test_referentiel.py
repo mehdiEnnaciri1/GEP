@@ -21,7 +21,7 @@ ANNEE_2025_2026 = {
 async def _jeton(
     client: AsyncClient, session: AsyncSession, *, role: RoleUtilisateur, email: str
 ) -> str:
-    utilisateur = construire_utilisateur(email=email, role=role)
+    utilisateur = await construire_utilisateur(session, email=email, role=role)
     session.add(utilisateur)
     await session.commit()
 

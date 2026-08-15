@@ -31,7 +31,7 @@ PERIODE = "2025-10"
 async def _jeton(
     client: AsyncClient, session: AsyncSession, *, role: RoleUtilisateur, email: str
 ) -> str:
-    utilisateur = construire_utilisateur(email=email, role=role)
+    utilisateur = await construire_utilisateur(session, email=email, role=role)
     session.add(utilisateur)
     await session.commit()
 
@@ -87,9 +87,7 @@ class TestGenerationEcheances:
         assert reponse.status_code == 200
         assert reponse.json()["nombre_generees"] == 1
 
-        impayes = await client.get(
-            f"/api/paiements/impayes?periode={PERIODE}", headers=headers
-        )
+        impayes = await client.get(f"/api/paiements/impayes?periode={PERIODE}", headers=headers)
         assert len(impayes.json()) == 1
         assert impayes.json()[0]["montant_du_cents"] == 20000
         assert impayes.json()[0]["statut"] == "NON_PAYE"
@@ -177,9 +175,7 @@ class TestGenerationEcheances:
         # rattaché à l'année qui n'est plus active, est ignoré.
         assert reponse.json()["nombre_generees"] == 1
 
-        impayes = await client.get(
-            "/api/paiements/impayes?periode=2026-10", headers=headers
-        )
+        impayes = await client.get("/api/paiements/impayes?periode=2026-10", headers=headers)
         assert len(impayes.json()) == 1
         assert impayes.json()[0]["eleve_id"] == eleve_nouveau.json()["id"]
         assert impayes.json()[0]["eleve_id"] != eleve_ancien_id
@@ -236,9 +232,7 @@ class TestEncaissementFraisInscription:
         }
         await client.post("/api/paiements/frais-inscription", json=corps, headers=headers)
 
-        reponse = await client.post(
-            "/api/paiements/frais-inscription", json=corps, headers=headers
-        )
+        reponse = await client.post("/api/paiements/frais-inscription", json=corps, headers=headers)
         assert reponse.status_code == 409
 
     async def test_idempotence_meme_cle_meme_paiement(
@@ -260,9 +254,7 @@ class TestEncaissementFraisInscription:
         premiere = await client.post(
             "/api/paiements/frais-inscription", json=corps, headers=headers
         )
-        seconde = await client.post(
-            "/api/paiements/frais-inscription", json=corps, headers=headers
-        )
+        seconde = await client.post("/api/paiements/frais-inscription", json=corps, headers=headers)
         assert premiere.status_code == 201
         assert seconde.status_code == 201
         assert premiere.json()["id"] == seconde.json()["id"]
@@ -301,9 +293,9 @@ class TestEncaissementMensualite:
         await client.post(
             "/api/paiements/generer-echeances", json={"periode": PERIODE}, headers=headers
         )
-        eleve_id = (await client.get("/api/eleves?taille=1", headers=headers)).json()[
-            "elements"
-        ][0]["id"]
+        eleve_id = (await client.get("/api/eleves?taille=1", headers=headers)).json()["elements"][
+            0
+        ]["id"]
 
         partiel = await client.post(
             "/api/paiements/mensualite",
@@ -318,9 +310,7 @@ class TestEncaissementMensualite:
         )
         assert partiel.status_code == 201
 
-        impayes = await client.get(
-            f"/api/paiements/impayes?periode={PERIODE}", headers=headers
-        )
+        impayes = await client.get(f"/api/paiements/impayes?periode={PERIODE}", headers=headers)
         assert impayes.json()[0]["statut"] == "PARTIEL"
         assert impayes.json()[0]["montant_paye_cents"] == 10000
 
@@ -367,17 +357,15 @@ class TestAnnulation:
     async def test_annuler_un_paiement_complet_revient_a_non_paye(
         self, client: AsyncClient, session: AsyncSession
     ):
-        jeton = await _jeton(
-            client, session, role=RoleUtilisateur.ADMIN, email="admin10@test.ma"
-        )
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin10@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
         await _creer_eleve_avec_inscription(client, session, headers, tarif_cents=30000)
         await client.post(
             "/api/paiements/generer-echeances", json={"periode": PERIODE}, headers=headers
         )
-        eleve_id = (await client.get("/api/eleves?taille=1", headers=headers)).json()[
-            "elements"
-        ][0]["id"]
+        eleve_id = (await client.get("/api/eleves?taille=1", headers=headers)).json()["elements"][
+            0
+        ]["id"]
 
         paiement = await client.post(
             "/api/paiements/mensualite",
@@ -414,17 +402,15 @@ class TestAnnulation:
         """Échéance de 300 DH, deux paiements de 100 et 150 DH (statut
         PARTIEL). Annuler celui de 150 DH doit laisser 100 DH payés, statut
         toujours PARTIEL — pas revenir à NON_PAYE, pas rester à 250."""
-        jeton = await _jeton(
-            client, session, role=RoleUtilisateur.ADMIN, email="admin11@test.ma"
-        )
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin11@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
         await _creer_eleve_avec_inscription(client, session, headers, tarif_cents=30000)
         await client.post(
             "/api/paiements/generer-echeances", json={"periode": PERIODE}, headers=headers
         )
-        eleve_id = (await client.get("/api/eleves?taille=1", headers=headers)).json()[
-            "elements"
-        ][0]["id"]
+        eleve_id = (await client.get("/api/eleves?taille=1", headers=headers)).json()["elements"][
+            0
+        ]["id"]
 
         await client.post(
             "/api/paiements/mensualite",
@@ -470,9 +456,7 @@ class TestAnnulation:
     async def test_annuler_paiement_frais_inscription(
         self, client: AsyncClient, session: AsyncSession
     ):
-        jeton = await _jeton(
-            client, session, role=RoleUtilisateur.ADMIN, email="admin12@test.ma"
-        )
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin12@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
         eleve_id, _, _ = await _creer_eleve_avec_inscription(client, session, headers)
 
@@ -512,9 +496,7 @@ class TestAnnulation:
         assert nouveau.status_code == 201
 
     async def test_double_annulation_refusee(self, client: AsyncClient, session: AsyncSession):
-        jeton = await _jeton(
-            client, session, role=RoleUtilisateur.ADMIN, email="admin13@test.ma"
-        )
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin13@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
         eleve_id, _, _ = await _creer_eleve_avec_inscription(client, session, headers)
         paiement = await client.post(
@@ -548,9 +530,7 @@ class TestAnnulation:
         """Correction demandée : vérifier explicitement que annuler() écrit
         bien dans journal_audit (action, avant/après, utilisateur, IP) —
         pas seulement que l'échéance/le paiement changent d'état."""
-        jeton = await _jeton(
-            client, session, role=RoleUtilisateur.ADMIN, email="admin16@test.ma"
-        )
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin16@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
         eleve_id, _, _ = await _creer_eleve_avec_inscription(client, session, headers)
         paiement = await client.post(
@@ -629,9 +609,7 @@ class TestHistorique:
     async def test_historique_inclut_les_paiements_annules(
         self, client: AsyncClient, session: AsyncSession
     ):
-        jeton = await _jeton(
-            client, session, role=RoleUtilisateur.ADMIN, email="admin15@test.ma"
-        )
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin15@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
         eleve_id, _, _ = await _creer_eleve_avec_inscription(client, session, headers)
         paiement = await client.post(
@@ -650,8 +628,6 @@ class TestHistorique:
             headers=headers,
         )
 
-        historique = await client.get(
-            f"/api/paiements/historique/{eleve_id}", headers=headers
-        )
+        historique = await client.get(f"/api/paiements/historique/{eleve_id}", headers=headers)
         assert len(historique.json()) == 1
         assert historique.json()[0]["annule_le"] is not None

@@ -77,10 +77,7 @@ class TestFormaterMontant:
         assert formater_montant(5000) == f"50,00{ESPACE_INSECABLE}MAD"
 
     def test_montant_avec_milliers(self):
-        assert (
-            formater_montant(1_234_550)
-            == f"12{ESPACE_INSECABLE}345,50{ESPACE_INSECABLE}MAD"
-        )
+        assert formater_montant(1_234_550) == f"12{ESPACE_INSECABLE}345,50{ESPACE_INSECABLE}MAD"
 
     def test_montant_negatif(self):
         assert formater_montant(-5000) == f"-50,00{ESPACE_INSECABLE}MAD"

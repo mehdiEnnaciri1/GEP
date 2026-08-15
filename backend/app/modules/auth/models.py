@@ -5,7 +5,16 @@ from __future__ import annotations
 import enum
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, DateTime, Enum, String, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Enum,
+    ForeignKey,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -33,10 +42,9 @@ class Utilisateur(Base):
     email: Mapped[str] = mapped_column(String(160), unique=True)
     mot_de_passe_hash: Mapped[str] = mapped_column(String)
     role: Mapped[RoleUtilisateur] = mapped_column(Enum(RoleUtilisateur, name="role_utilisateur"))
-    # ⚠ La table `professeur` n'existe pas encore (étape 5 de la roadmap). Colonne
-    # nullable, sans ForeignKey pour l'instant ; la FK sera ajoutée dans une
-    # migration ultérieure quand `professeur` sera créée.
-    professeur_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    professeur_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("professeur.id"), nullable=True
+    )
     actif: Mapped[bool] = mapped_column(Boolean, default=True)
     derniere_connexion: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
