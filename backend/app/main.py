@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from app.core.exceptions import enregistrer_gestionnaires_exceptions
 from app.modules.auth.router import router as auth_router
 from app.modules.eleves.router import router as eleves_router
+from app.modules.paie.router import router as paie_router
 from app.modules.paiements.router import router as paiements_router
 from app.modules.professeurs.router import router as professeurs_router
 from app.modules.referentiel.router import router as referentiel_router
@@ -23,6 +24,7 @@ app.include_router(referentiel_router, prefix="/api")
 app.include_router(eleves_router, prefix="/api")
 app.include_router(paiements_router, prefix="/api")
 app.include_router(professeurs_router, prefix="/api")
+app.include_router(paie_router, prefix="/api")
 
 
 @app.get("/health")

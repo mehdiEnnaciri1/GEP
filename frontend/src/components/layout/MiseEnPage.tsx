@@ -11,6 +11,7 @@ const LIENS = [
   { vers: '/impayes', libelle: 'Impayés' },
   { vers: '/professeurs', libelle: 'Professeurs' },
   { vers: '/affectations', libelle: 'Affectations' },
+  { vers: '/paie', libelle: 'Paie' },
   { vers: '/referentiel/annees-scolaires', libelle: 'Années scolaires' },
   { vers: '/referentiel/matieres', libelle: 'Matières' },
   { vers: '/referentiel/tarifs', libelle: 'Tarifs' },
@@ -23,7 +24,7 @@ export function MiseEnPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="flex items-center justify-between border-b px-6 py-3">
+      <header className="flex items-center justify-between border-b px-6 py-3 print:hidden">
         <nav className="flex items-center gap-4 text-sm">
           {LIENS.map((lien) => (
             <NavLink
