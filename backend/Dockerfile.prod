@@ -1,0 +1,72 @@
+# syntax=docker/dockerfile:1
+
+# Image de production, multi-étages : l'étape "builder" installe les
+# dépendances (dont les bibliothèques de compilation) et n'existe jamais dans
+# l'image finale — voir docs/04-roadmap.md, étape 10. Contrairement à
+# `Dockerfile` (développement, --reload, monté en bind, tourne en root),
+# celle-ci sert le code copié une fois pour toutes, sans mypy/ruff/pytest/
+# testcontainers, en utilisateur non-root.
+
+# ---- Étape 1 : builder --------------------------------------------------------
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+# Dépendances de COMPILATION seulement (argon2-cffi, notamment) — absentes de
+# l'image finale, voir l'étape "runtime" plus bas.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential libffi-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Autorité de certification locale optionnelle — voir
+# docs/adr/2026-08-13-certificat-racine-build-docker.md. Vide en production
+# normale (aucun filtre TLS sur un VPS) : ce COPY et cette étape sont alors
+# des no-op sans effet, jamais un contournement de la vérification TLS.
+COPY infra/certs/ /usr/local/share/ca-certificates/
+RUN update-ca-certificates && \
+    pip config set global.cert /etc/ssl/certs/ca-certificates.crt
+
+COPY backend/pyproject.toml ./
+# [pdf] seul — jamais [dev] : pas de pytest/ruff/mypy/testcontainers en
+# production. Un venv isolé, copié tel quel dans l'étape "runtime" (pas de
+# `pip install --user`, plus simple à copier d'une étape à l'autre).
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir ".[pdf]"
+
+COPY backend/ .
+
+# ---- Étape 2 : image d'exécution ----------------------------------------------
+FROM python:3.12-slim AS runtime
+
+WORKDIR /app
+
+# Bibliothèques natives nécessaires à l'EXÉCUTION de WeasyPrint et
+# d'argon2-cffi — pas de compilateur ici (voir l'étape "builder" ci-dessus),
+# c'est tout l'intérêt du multi-étages : gcc/libffi-dev ne pèsent pas sur
+# l'image finale.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
+    libgdk-pixbuf-2.0-0 libharfbuzz0b libfribidi0 \
+    fonts-dejavu-core fonts-noto-core \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --shell /usr/sbin/nologin gep
+
+COPY infra/certs/ /usr/local/share/ca-certificates/
+RUN update-ca-certificates
+
+COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder --chown=gep:gep /app /app
+ENV PATH="/opt/venv/bin:$PATH"
+
+USER gep
+
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
+    CMD python -c "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=3)"
+
+# Pas de --reload (dev uniquement) ; les migrations (`alembic upgrade head`)
+# se lancent explicitement au déploiement, jamais automatiquement au
+# démarrage du conteneur — voir docs/05-deploiement.md.
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

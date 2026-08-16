@@ -1,0 +1,111 @@
+# Compose de production — voir docs/05-deploiement.md pour la procédure
+# complète. Différences volontaires avec docker-compose.yml (développement) :
+#
+# - toutes les valeurs sensibles viennent de variables d'environnement
+#   réelles (${VAR:?message} échoue au démarrage si la variable manque)
+#   plutôt que d'un .env committé — voir docs/05-deploiement.md pour créer
+#   un `.env.prod` non versionné sur le serveur ;
+# - postgres n'expose aucun port : seuls les conteneurs de ce compose
+#   peuvent l'atteindre, jamais l'hôte ni l'extérieur ;
+# - nginx sert le build statique et fait office de TLS termination + reverse
+#   proxy vers l'API (§8 de docs/01-architecture.md) — https, redirection
+#   http → https, en-têtes de sécurité (voir infra/nginx/app.conf.template) ;
+# - `restart: unless-stopped` partout : un redémarrage du serveur ou un crash
+#   ne doit pas exiger d'intervention manuelle ;
+# - `mem_limit` sur chaque service : un service qui fuit de la mémoire ne
+#   doit pas swapper la machine entière au point de la rendre inutilisable ;
+# - logs JSON avec rotation (`max-size`/`max-file`) : les logs ne doivent
+#   jamais remplir le disque sans limite.
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant}
+    # Aucun `ports:` — atteignable uniquement par les autres services de ce
+    # compose (réseau interne Docker par défaut), jamais depuis l'hôte.
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-gep}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile.prod
+    restart: unless-stopped
+    mem_limit: 512m
+    environment:
+      APP_ENV: production
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY manquant}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER manquant}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD manquant}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB manquant}
+      POSTGRES_HOST: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Pas de `ports:` côté hôte : seul nginx (même réseau Docker) parle à
+    # l'API, jamais directement depuis l'extérieur.
+    volumes:
+      - donnees_justificatifs:/donnees/justificatifs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health', timeout=2)"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  nginx:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.prod
+    restart: unless-stopped
+    mem_limit: 128m
+    environment:
+      DOMAIN_NAME: ${DOMAIN_NAME:?DOMAIN_NAME manquant (ex. gep.mon-domaine.ma)}
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./infra/certbot/conf:/etc/letsencrypt:ro
+      - ./infra/certbot/www:/var/www/certbot:ro
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  # Sidecar Let's Encrypt : ne tourne pas en continu (pas de `restart:`), se
+  # déclenche via `docker compose -f docker-compose.prod.yml run --rm certbot
+  # ...` — bootstrap initial et renouvellement périodique (cron), voir
+  # docs/05-deploiement.md et docs/06-exploitation.md.
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - ./infra/certbot/conf:/etc/letsencrypt
+      - ./infra/certbot/www:/var/www/certbot
+    entrypoint: ["certbot"]
+
+volumes:
+  postgres_data:
+  donnees_justificatifs:

@@ -32,3 +32,7 @@ class LoginReponse(BaseModel):
 class AccessTokenReponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
+
+
+class DeconnexionPartoutRequete(BaseModel):
+    utilisateur_id: int

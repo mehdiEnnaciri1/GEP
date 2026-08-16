@@ -190,3 +190,76 @@ vérification TLS dans une image. Un certificat racine ajouté au magasin de
 confiance du conteneur est une extension légitime de la confiance ; désactiver
 la vérification revient à ne plus vérifier du tout qui se trouve à l'autre
 bout de la connexion — y compris en production.
+
+## Checklist de mise en production
+
+Procédures détaillées : `docs/05-deploiement.md` (premier déploiement, mise à
+jour, rollback) et `docs/06-exploitation.md` (sauvegarde, restauration,
+secrets, logs, urgences). À cocher dans l'ordre, avant le premier
+déploiement chez le client — ne pas sauter d'étape sous prétexte qu'elle
+semble déjà couverte ailleurs.
+
+**Infrastructure**
+
+- [ ] Machine préparée (Docker installé, pare-feu limité à 22/80/443, utilisateur
+      dédié non-root pour le déploiement) — `docs/05-deploiement.md` §1
+- [ ] DNS du domaine choisi pointe vers l'IP du serveur, propagation vérifiée
+- [ ] `.env.prod` créé **sur le serveur uniquement** (jamais committé), avec des
+      secrets générés aléatoirement (`openssl rand -hex ...`), pas inventés
+- [ ] Certificat Let's Encrypt obtenu, `docker compose -f docker-compose.prod.yml`
+      démarre les trois services sans erreur
+- [ ] `GET /health` répond 200 en HTTPS depuis l'extérieur du serveur
+- [ ] En-têtes de sécurité présents (`curl -I` : `Strict-Transport-Security`,
+      `X-Frame-Options`, `X-Content-Type-Options`)
+- [ ] HTTP (port 80) redirige bien vers HTTPS, ne sert que le challenge ACME
+
+**Données**
+
+- [ ] Migrations Alembic à `head` (`alembic upgrade head` exécuté sur le serveur,
+      pas seulement en local)
+- [ ] Données de référence chargées (`make seed` / `python -m app.db.seeds` :
+      niveaux, matières, paramètres, catégories de charge, admin initial)
+- [ ] Connexion avec le compte admin initial réussie, mot de passe temporaire
+      noté pour être changé après la formation de la secrétaire
+
+**Sauvegarde — non négociable**
+
+- [ ] Cron de sauvegarde quotidienne installé (`docs/05-deploiement.md` §7)
+- [ ] `SAUVEGARDE_GPG_PASSPHRASE` généré et stocké en lieu sûr, **hors dépôt et
+      hors `.env.prod`** (un gestionnaire de mots de passe, pas un fichier texte
+      sur le serveur qu'on sauvegarde)
+- [ ] Copie hors machine configurée (`SAUVEGARDE_RSYNC_DEST` ou équivalent
+      rclone) — une sauvegarde qui ne quitte jamais le serveur ne protège de
+      rien en cas d'incident sur ce serveur
+- [ ] **Test de restauration effectué au moins une fois**, dans une base de
+      test isolée, résultat vérifié et daté (`docs/06-exploitation.md`
+      §Test de restauration)
+- [ ] Cron de renouvellement du certificat installé et vérifié une première
+      fois manuellement (`certbot renew --dry-run`)
+
+**Sécurité**
+
+- [ ] `SECRET_KEY` et `POSTGRES_PASSWORD` générés aléatoirement, jamais les
+      valeurs par défaut du développement
+- [ ] Ports exposés côté hôte : uniquement 22 (SSH), 80, 443 — ni 5432
+      (postgres) ni 8000/8010 (api) ne doivent être accessibles depuis
+      l'extérieur (`docker compose -f docker-compose.prod.yml ps` : postgres
+      et api n'ont pas de colonne `PORTS` visible depuis l'hôte)
+- [ ] `/admin/deconnecter-partout` testé une fois (révocation d'un compte de
+      test), pour savoir s'en servir le jour où c'est nécessaire en urgence
+
+**Formation et remise**
+
+- [ ] Formation de la secrétaire / caissier(ère) : connexion, saisie d'un
+      élève, encaissement, consultation des impayés — sur l'environnement
+      réel, pas une démo
+- [ ] Formation de l'administrateur : validation de la paie, saisie des
+      charges, lecture du tableau de bord, différence entre les rôles
+      (CAISSIER ne voit ni charges, ni paie, ni bénéfice net — attendu, pas un
+      bug à signaler)
+- [ ] Personne de contact identifiée côté client pour les urgences (ajout
+      d'utilisateur, réinitialisation de mot de passe) en l'absence du
+      développeur, avec `docs/06-exploitation.md` en main
+- [ ] Mot de passe de l'admin initial changé après la formation (le mot de
+      passe temporaire de la checklist "Données" ne doit pas rester valide
+      indéfiniment)

@@ -56,7 +56,15 @@ def creer_refresh_token(utilisateur_id: int) -> str:
 def _encoder(
     *, sub: str, role: str | None, type_jeton: Literal["access", "refresh"], expiration: datetime
 ) -> str:
-    charge = {"sub": sub, "type": type_jeton, "exp": expiration}
+    # `iat` sert à la révocation des refresh tokens (AuthService.rafraichir) :
+    # un token émis avant `utilisateur.tokens_invalides_avant` est refusé même
+    # s'il n'est pas encore expiré.
+    charge: dict[str, Any] = {
+        "sub": sub,
+        "type": type_jeton,
+        "exp": expiration,
+        "iat": datetime.now(UTC),
+    }
     if role is not None:
         charge["role"] = role
     return jwt.encode(charge, obtenir_reglages().secret_key, algorithm=_ALGORITHME)

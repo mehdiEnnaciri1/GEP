@@ -23,11 +23,20 @@ dist/
 # poste, jamais dans le dépôt. Voir docs/adr/2026-08-13-certificat-racine-build-docker.md
 infra/certs/*.crt
 
+# Certificats Let's Encrypt et challenges ACME — propres à chaque serveur de
+# production, jamais dans le dépôt (voir docker-compose.prod.yml, service
+# certbot, et docs/05-deploiement.md).
+infra/certbot/conf/*
+infra/certbot/www/*
+!infra/certbot/conf/.gitkeep
+!infra/certbot/www/.gitkeep
+
 # Données — jamais dans git
 donnees/
 sauvegardes/
 *.dump
 *.sql.gz
+.env.prod
 
 # Éditeurs / outils locaux
 .vscode/*

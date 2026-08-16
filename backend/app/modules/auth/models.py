@@ -49,4 +49,11 @@ class Utilisateur(Base):
     derniere_connexion: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Révocation des refresh tokens (étape 10) : tout refresh token émis
+    # AVANT cette date est refusé par /auth/refresh, quelle que soit sa date
+    # d'expiration propre — voir AuthService.rafraichir. Posée à now() par
+    # /auth/logout et par /admin/deconnecter-partout. NULL = jamais révoqué.
+    tokens_invalides_avant: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

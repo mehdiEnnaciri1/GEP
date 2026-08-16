@@ -63,6 +63,15 @@ class TestJetons:
         charge = decoder_token(jeton, type_attendu="refresh")
         assert "role" not in charge
 
+    def test_refresh_token_porte_un_iat(self):
+        # `iat` sert à la révocation (AuthService.rafraichir compare cette
+        # date à `utilisateur.tokens_invalides_avant`, voir étape 10).
+        avant = time.time()
+        jeton = creer_refresh_token(utilisateur_id=7)
+        charge = decoder_token(jeton, type_attendu="refresh")
+        assert "iat" in charge
+        assert avant - 1 <= charge["iat"] <= time.time() + 1
+
     def test_refuse_un_access_token_presente_comme_refresh(self):
         jeton = creer_access_token(utilisateur_id=42, role="ADMIN")
         with pytest.raises(AuthentificationInvalide):

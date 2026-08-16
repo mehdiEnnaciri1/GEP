@@ -12,9 +12,11 @@ puisque l'exception empêcherait jamais d'atteindre ce commit.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import AuthentificationInvalide
+from app.core.exceptions import AuthentificationInvalide, RessourceIntrouvable
 from app.core.security import (
     creer_access_token,
     creer_refresh_token,
@@ -74,15 +76,58 @@ class AuthService:
         if utilisateur is None or not utilisateur.actif:
             raise AuthentificationInvalide("Authentification requise.")
 
+        # `iat` est un entier de secondes (norme JWT), tronqué par rapport à
+        # `tokens_invalides_avant` (microseconde) — comparer le premier tel
+        # quel contre le second, sans arrondir ce dernier, reste correct
+        # pour révoquer un jeton ANTÉRIEUR (floor(iat) <= iat < révocation
+        # implique floor(iat) < révocation, quelle que soit la seconde).
+        # L'arrondir aurait affaibli cette garantie pour gagner, en échange,
+        # un cas bien plus rare et bien moins grave : une connexion émise
+        # dans la MÊME seconde qu'une révocation peut exceptionnellement
+        # essuyer un rafraîchissement refusé — l'utilisateur se reconnecte,
+        # rien de plus. Mieux vaut over-révoquer que sous-révoquer.
+        emis_le = datetime.fromtimestamp(charge["iat"], tz=UTC)
+        if (
+            utilisateur.tokens_invalides_avant is not None
+            and emis_le < utilisateur.tokens_invalides_avant
+        ):
+            raise AuthentificationInvalide("Authentification requise.")
+
         return creer_access_token(utilisateur.id, utilisateur.role.value)
 
     async def deconnecter(self, utilisateur: Utilisateur, adresse_ip: str | None) -> None:
+        utilisateur.tokens_invalides_avant = datetime.now(UTC)
+
         await journaliser(
             self._session,
             action="DECONNEXION",
             entite="utilisateur",
             entite_id=utilisateur.id,
             utilisateur_id=utilisateur.id,
+            adresse_ip=adresse_ip,
+        )
+        await self._session.commit()
+
+    async def deconnecter_partout(
+        self, utilisateur_id: int, initiateur_id: int, adresse_ip: str | None
+    ) -> None:
+        """Révocation globale (§10) : tout refresh token de `utilisateur_id`
+        émis avant maintenant devient inutilisable, même sur un autre
+        appareil — utile en cas de perte/vol d'un poste ou de départ d'un
+        employé."""
+        utilisateur = await self._utilisateurs.get_by_id(utilisateur_id)
+        if utilisateur is None:
+            raise RessourceIntrouvable(f"Utilisateur {utilisateur_id} introuvable.")
+
+        utilisateur.tokens_invalides_avant = datetime.now(UTC)
+
+        await journaliser(
+            self._session,
+            action="MODIFICATION",
+            entite="utilisateur",
+            entite_id=utilisateur.id,
+            utilisateur_id=initiateur_id,
+            apres={"tokens_invalides_avant": utilisateur.tokens_invalides_avant.isoformat()},
             adresse_ip=adresse_ip,
         )
         await self._session.commit()

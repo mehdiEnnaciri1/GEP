@@ -6,6 +6,7 @@ from fastapi import FastAPI
 
 from app.core.exceptions import enregistrer_gestionnaires_exceptions
 from app.modules.auth.router import router as auth_router
+from app.modules.auth.router import router_admin as auth_router_admin
 from app.modules.charges.router import router as charges_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.eleves.router import router as eleves_router
@@ -23,6 +24,7 @@ enregistrer_gestionnaires_exceptions(app)
 # le front en dev (proxy Vite) et en production (nginx). Seul /health reste à
 # la racine : c'est ce qu'interroge le healthcheck Docker Compose du service api.
 app.include_router(auth_router, prefix="/api")
+app.include_router(auth_router_admin, prefix="/api")
 app.include_router(referentiel_router, prefix="/api")
 app.include_router(eleves_router, prefix="/api")
 app.include_router(paiements_router, prefix="/api")

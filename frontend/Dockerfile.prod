@@ -1,0 +1,38 @@
+# syntax=docker/dockerfile:1
+
+# Image de production : multi-étages, build statique puis nginx. Contrairement
+# à `Dockerfile` (développement, `npm run dev`, HMR), cette image ne contient
+# ni Node ni node_modules — seulement les fichiers statiques compilés et un
+# nginx qui les sert + proxifie /api (voir docs/01-architecture.md §8 et
+# docs/adr/2026-08-13-meme-origine-proxy-vite.md).
+
+# ---- Étape 1 : build ------------------------------------------------------------
+FROM node:22-slim AS builder
+
+WORKDIR /app
+
+# Autorité de certification locale optionnelle — voir
+# docs/adr/2026-08-13-certificat-racine-build-docker.md. Vide en production
+# normale, sans effet.
+COPY infra/certs/ /usr/local/share/ca-certificates/
+ENV NODE_EXTRA_CA_CERTS=/usr/local/share/ca-certificates/avast-root.crt
+
+COPY frontend/package.json frontend/package-lock.json frontend/.npmrc ./
+RUN npm ci
+
+COPY frontend/ .
+RUN npm run build
+
+# ---- Étape 2 : nginx --------------------------------------------------------------
+FROM nginx:1.27-alpine AS runtime
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY infra/nginx/app.conf.template /etc/nginx/templates/app.conf.template
+
+# `envsubst` (déjà intégré à l'image nginx officielle, voir
+# docker-entrypoint.d/20-envsubst-on-templates.sh) substitue ${DOMAIN_NAME}
+# au démarrage, à partir de la variable d'environnement du même nom.
+EXPOSE 80 443
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=5 \
+    CMD wget -q -O /dev/null http://localhost/health || exit 1

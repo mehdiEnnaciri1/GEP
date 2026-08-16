@@ -1,0 +1,87 @@
+# Gabarit nginx pour la production — voir docs/01-architecture.md §8 et
+# docs/adr/2026-08-13-meme-origine-proxy-vite.md (même principe qu'en
+# développement : une seule origine, nginx sert le build statique ET
+# proxifie /api vers le service `api`, jamais de CORS à gérer).
+#
+# ${DOMAIN_NAME} est substitué au démarrage par l'image nginx officielle
+# (docker-entrypoint.d/20-envsubst-on-templates.sh traite tout fichier
+# /etc/nginx/templates/*.template et écrit le résultat dans
+# /etc/nginx/conf.d/, voir docker-compose.prod.yml).
+
+# Logs structurés JSON, une ligne par requête — voir docs/06-exploitation.md
+# pour leur emplacement et docker-compose.prod.yml pour leur rotation
+# (options `logging: driver: json-file`). Défini au niveau `http` (ce fichier
+# est inclus dans ce contexte par le nginx.conf de base de l'image officielle,
+# voir /etc/nginx/conf.d/*.conf) : `log_format` n'est pas autorisé à
+# l'intérieur d'un bloc `server`, seul `access_log` (qui le référence) l'est.
+log_format json_combined escape=json '{'
+    '"heure":"$time_iso8601",'
+    '"ip":"$remote_addr",'
+    '"methode":"$request_method",'
+    '"chemin":"$uri",'
+    '"statut":$status,'
+    '"duree_s":$request_time,'
+    '"agent":"$http_user_agent"'
+'}';
+
+# ---- HTTP : uniquement la validation ACME et la redirection vers HTTPS -------
+server {
+    listen 80;
+    server_name ${DOMAIN_NAME};
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ---- HTTPS --------------------------------------------------------------------
+server {
+    listen 443 ssl;
+    server_name ${DOMAIN_NAME};
+
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN_NAME}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN_NAME}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+
+    # En-têtes de sécurité (étape 10 de docs/04-roadmap.md).
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+    add_header X-Frame-Options "DENY" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+    access_log /var/log/nginx/access.log json_combined;
+
+    # Un peu plus que reglages.taille_max_fichier_mo (5 Mo, voir shared/stockage.py)
+    # pour laisser de la marge aux en-têtes multipart.
+    client_max_body_size 6m;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location /api/ {
+        proxy_pass http://api:8000/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /health {
+        proxy_pass http://api:8000/health;
+    }
+
+    # SPA : toute route inconnue de nginx retombe sur index.html, c'est
+    # react-router (front) qui décide s'il s'agit d'une 404 applicative.
+    location / {
+        root /usr/share/nginx/html;
+        try_files $uri /index.html;
+    }
+}

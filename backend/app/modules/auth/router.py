@@ -14,6 +14,7 @@ from app.modules.auth.models import RoleUtilisateur, Utilisateur
 from app.modules.auth.repository import UtilisateurRepository
 from app.modules.auth.schemas import (
     AccessTokenReponse,
+    DeconnexionPartoutRequete,
     LoginReponse,
     LoginRequete,
     UtilisateurPublic,
@@ -21,6 +22,11 @@ from app.modules.auth.schemas import (
 from app.modules.auth.service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Routeur séparé (pas sous /auth) pour obtenir exactement le chemin
+# /api/admin/deconnecter-partout demandé — une action d'administration des
+# comptes, pas une action que l'utilisateur fait sur sa propre session.
+router_admin = APIRouter(prefix="/admin", tags=["admin"])
 
 _NOM_COOKIE_REFRESH = "refresh_token"
 _CHEMIN_COOKIE_REFRESH = "/api/auth"
@@ -95,3 +101,15 @@ async def lister_utilisateurs(
 ) -> list[UtilisateurPublic]:
     utilisateurs = await UtilisateurRepository(session).lister()
     return [UtilisateurPublic.model_validate(u) for u in utilisateurs]
+
+
+@router_admin.post("/deconnecter-partout", status_code=204)
+async def deconnecter_partout(
+    donnees: DeconnexionPartoutRequete,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    utilisateur: Utilisateur = Depends(exige_role(RoleUtilisateur.ADMIN)),
+) -> None:
+    await AuthService(session).deconnecter_partout(
+        donnees.utilisateur_id, utilisateur.id, _adresse_ip(request)
+    )
