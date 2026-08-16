@@ -7,6 +7,7 @@ import { MiseEnPage } from '@/components/layout/MiseEnPage'
 import { useInitialiserSession } from '@/features/auth/hooks/useInitialiserSession'
 import { PageConnexion } from '@/features/auth/pages/PageConnexion'
 import { PageCharges } from '@/features/charges/pages/PageCharges'
+import { PageDashboard } from '@/features/dashboard/pages/PageDashboard'
 import { PageCreationEleve } from '@/features/eleves/pages/PageCreationEleve'
 import { PageFicheEleve } from '@/features/eleves/pages/PageFicheEleve'
 import { PageListeEleves } from '@/features/eleves/pages/PageListeEleves'
@@ -51,6 +52,7 @@ function Racine() {
         <Route element={<RouteProtegee />}>
           <Route element={<MiseEnPage />}>
             <Route path="/" element={<PageAccueil />} />
+            <Route path="/dashboard" element={<PageDashboard />} />
             <Route path="/eleves" element={<PageListeEleves />} />
             <Route path="/eleves/nouveau" element={<PageCreationEleve />} />
             <Route path="/eleves/:id" element={<PageFicheEleve />} />
