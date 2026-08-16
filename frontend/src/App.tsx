@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { MiseEnPage } from '@/components/layout/MiseEnPage'
 import { useInitialiserSession } from '@/features/auth/hooks/useInitialiserSession'
 import { PageConnexion } from '@/features/auth/pages/PageConnexion'
+import { PageCharges } from '@/features/charges/pages/PageCharges'
 import { PageCreationEleve } from '@/features/eleves/pages/PageCreationEleve'
 import { PageFicheEleve } from '@/features/eleves/pages/PageFicheEleve'
 import { PageListeEleves } from '@/features/eleves/pages/PageListeEleves'
@@ -60,6 +61,7 @@ function Racine() {
             <Route path="/affectations" element={<PageMatriceAffectations />} />
             <Route path="/paie" element={<PageGenerationPaie />} />
             <Route path="/paie/:id" element={<PagePaieDetail />} />
+            <Route path="/charges" element={<PageCharges />} />
             <Route path="/referentiel/annees-scolaires" element={<PageAnneesScolaires />} />
             <Route path="/referentiel/matieres" element={<PageMatieres />} />
             <Route path="/referentiel/tarifs" element={<PageGrilleTarifs />} />

@@ -14,7 +14,12 @@ export class ErreurApi extends Error {
 
 async function requeteBrute(chemin: string, options: RequestInit): Promise<Response> {
   const entetes = new Headers(options.headers)
-  if (options.body !== undefined) entetes.set('Content-Type', 'application/json')
+  // FormData (dépôt de fichier) : ne jamais poser Content-Type nous-mêmes —
+  // le navigateur doit fixer le boundary multipart lui-même. Le poser à la
+  // main casse le parsing côté serveur.
+  if (options.body !== undefined && !(options.body instanceof FormData)) {
+    entetes.set('Content-Type', 'application/json')
+  }
 
   const accessToken = useSessionStore.getState().accessToken
   if (accessToken) entetes.set('Authorization', `Bearer ${accessToken}`)

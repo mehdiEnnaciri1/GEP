@@ -26,6 +26,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hacher_mot_de_passe
 from app.modules.auth.models import RoleUtilisateur, Utilisateur
 from app.modules.auth.repository import UtilisateurRepository
+from app.modules.charges.models import CategorieCharge
+from app.modules.charges.repository import CategorieChargeRepository
 from app.modules.referentiel.models import Matiere, Niveau, Parametre
 from app.modules.referentiel.repository import (
     MatiereRepository,
@@ -51,6 +53,19 @@ MATIERES = [
     ("ANGLAIS", "Anglais"),
     ("ARABE", "Arabe"),
     ("SVT", "SVT"),
+]
+
+# §8.1 du cahier des charges.
+CATEGORIES_CHARGE = [
+    "Loyer",
+    "Électricité",
+    "Eau",
+    "Internet",
+    "Salaires administratifs",
+    "Fournitures",
+    "Entretien",
+    "Publicité",
+    "Autres",
 ]
 
 # (clé, valeur, type_valeur, description) — §1 de docs/02-modele-donnees.md.
@@ -109,6 +124,21 @@ async def seed_parametres(session: AsyncSession) -> None:
     print(f"Paramètres : {crees} créé(s), {len(PARAMETRES) - crees} déjà présent(s).")
 
 
+async def seed_categories_charge(session: AsyncSession) -> None:
+    repository = CategorieChargeRepository(session)
+    crees = 0
+    for libelle in CATEGORIES_CHARGE:
+        if await repository.get_by_libelle(libelle) is not None:
+            continue
+        await repository.creer(CategorieCharge(libelle=libelle))
+        crees += 1
+    await session.commit()
+    print(
+        f"Catégories de charge : {crees} créée(s), "
+        f"{len(CATEGORIES_CHARGE) - crees} déjà présente(s)."
+    )
+
+
 async def seed_administrateur_initial(session: AsyncSession) -> None:
     email = os.environ.get("ADMIN_INITIAL_EMAIL")
     mot_de_passe = os.environ.get("ADMIN_INITIAL_PASSWORD")
@@ -144,6 +174,7 @@ async def seed_tout(session: AsyncSession) -> None:
     await seed_niveaux(session)
     await seed_matieres(session)
     await seed_parametres(session)
+    await seed_categories_charge(session)
     await seed_administrateur_initial(session)
 
 
