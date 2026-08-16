@@ -12,6 +12,7 @@ from app.modules.eleves.router import router as eleves_router
 from app.modules.paie.router import router as paie_router
 from app.modules.paiements.router import router as paiements_router
 from app.modules.professeurs.router import router as professeurs_router
+from app.modules.rapports.router import router as rapports_router
 from app.modules.referentiel.router import router as referentiel_router
 
 app = FastAPI(title="GEP — API")
@@ -29,6 +30,7 @@ app.include_router(professeurs_router, prefix="/api")
 app.include_router(paie_router, prefix="/api")
 app.include_router(charges_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api")
+app.include_router(rapports_router, prefix="/api")
 
 
 @app.get("/health")

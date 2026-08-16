@@ -35,6 +35,11 @@ dev = [
     "ruff>=0.7",
     "mypy>=1.13",
     "types-python-jose>=3.3",
+    # Extraction de texte des PDF générés, pour vérifier en test que les noms
+    # arabes sont bien rendus (étape 9) — pure Python, aucune dépendance
+    # système, contrairement à WeasyPrint.
+    "pypdf>=5.0",
+    "types-openpyxl>=3.1",
 ]
 
 [tool.pytest.ini_options]
@@ -57,6 +62,13 @@ ignore = ["B008"]
 python_version = "3.12"
 strict = true
 plugins = []
+
+# Pas de stubs publiés pour WeasyPrint (contrairement à openpyxl, couvert par
+# types-openpyxl) — import de toute façon paresseux et local à une seule
+# fonction (pdf.py), voir docs/adr/2026-08-13-weasyprint-extra-optionnel.md.
+[[tool.mypy.overrides]]
+module = "weasyprint"
+ignore_missing_imports = true
 
 [build-system]
 requires = ["setuptools>=68"]

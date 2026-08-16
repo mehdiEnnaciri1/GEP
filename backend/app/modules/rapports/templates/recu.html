@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A5; margin: 1.5cm; }
+  body {
+    font-family: "Noto Sans", "Noto Sans Arabic", "Noto Naskh Arabic", sans-serif;
+    font-size: 11pt;
+    color: #111;
+  }
+  h1 { font-size: 14pt; margin-bottom: 0; }
+  p.numero { color: #555; margin-top: 0.1cm; }
+  table.details { width: 100%; margin-top: 1cm; border-collapse: collapse; }
+  table.details td { padding: 4px 0; }
+  table.details td.libelle { color: #555; width: 40%; }
+  p.montant-total { font-size: 16pt; font-weight: 700; margin-top: 1cm; text-align: right; }
+</style>
+</head>
+<body>
+  <h1>{{ nom_centre }}</h1>
+  <p>Reçu de paiement</p>
+  <p class="numero">{{ numero_recu }}</p>
+  <table class="details">
+    <tr><td class="libelle">Élève</td><td>{{ eleve_nom }} {{ eleve_prenom }} ({{ eleve_matricule }})</td></tr>
+    <tr><td class="libelle">Type</td><td>{{ type_libelle }}</td></tr>
+    {% if periode %}<tr><td class="libelle">Période</td><td>{{ periode }}</td></tr>{% endif %}
+    <tr><td class="libelle">Date</td><td>{{ date_paiement }}</td></tr>
+    <tr><td class="libelle">Mode de paiement</td><td>{{ mode_paiement }}</td></tr>
+  </table>
+  <p class="montant-total">{{ montant }}</p>
+</body>
+</html>

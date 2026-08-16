@@ -22,6 +22,7 @@ import { PageAnneesScolaires } from '@/features/referentiel/pages/PageAnneesScol
 import { PageGrilleTarifs } from '@/features/referentiel/pages/PageGrilleTarifs'
 import { PageMatieres } from '@/features/referentiel/pages/PageMatieres'
 import { PageParametres } from '@/features/referentiel/pages/PageParametres'
+import { PageRapports } from '@/features/rapports/pages/PageRapports'
 import { RouteProtegee } from '@/routes/RouteProtegee'
 import { useSessionStore } from '@/stores/session'
 
@@ -68,6 +69,7 @@ function Racine() {
             <Route path="/referentiel/matieres" element={<PageMatieres />} />
             <Route path="/referentiel/tarifs" element={<PageGrilleTarifs />} />
             <Route path="/referentiel/parametres" element={<PageParametres />} />
+            <Route path="/rapports" element={<PageRapports />} />
           </Route>
         </Route>
       </Routes>

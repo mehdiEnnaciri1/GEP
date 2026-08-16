@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 1.5cm; }
+  body {
+    font-family: "Noto Sans", "Noto Sans Arabic", "Noto Naskh Arabic", sans-serif;
+    font-size: 10pt;
+    color: #111;
+  }
+  h1 { font-size: 14pt; margin-bottom: 0.2cm; }
+  p.sous-titre { color: #555; margin-top: 0; margin-bottom: 0.8cm; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border-bottom: 1px solid #ddd; padding: 4px 6px; text-align: left; }
+  th { background: #f3f3f3; font-weight: 600; }
+  td.montant, th.montant { text-align: right; }
+  tfoot td { font-weight: 600; border-top: 2px solid #333; }
+</style>
+</head>
+<body>
+  <h1>{{ titre }}</h1>
+  {% if sous_titre %}<p class="sous-titre">{{ sous_titre }}</p>{% endif %}
+  <table>
+    <thead>
+      <tr>
+        {% for colonne in colonnes %}
+        <th class="{{ 'montant' if colonne.montant else '' }}">{{ colonne.libelle }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for ligne in lignes %}
+      <tr>
+        {% for colonne in colonnes %}
+        <td class="{{ 'montant' if colonne.montant else '' }}">{{ ligne[colonne.cle] }}</td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+      {% if not lignes %}
+      <tr><td colspan="{{ colonnes|length }}">Aucune donnée pour cette sélection.</td></tr>
+      {% endif %}
+    </tbody>
+    {% if totaux %}
+    <tfoot>
+      <tr>
+        {% for cellule in totaux %}
+        <td class="{{ 'montant' if cellule.montant else '' }}">{{ cellule.valeur }}</td>
+        {% endfor %}
+      </tr>
+    </tfoot>
+    {% endif %}
+  </table>
+</body>
+</html>

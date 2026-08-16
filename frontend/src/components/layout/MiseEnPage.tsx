@@ -18,6 +18,7 @@ const LIENS = [
   { vers: '/referentiel/matieres', libelle: 'Matières' },
   { vers: '/referentiel/tarifs', libelle: 'Tarifs' },
   { vers: '/referentiel/parametres', libelle: 'Paramètres' },
+  { vers: '/rapports', libelle: 'Rapports' },
 ]
 
 export function MiseEnPage() {

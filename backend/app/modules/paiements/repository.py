@@ -8,7 +8,14 @@ import uuid
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.paiements.models import Echeance, LigneEcheance, Paiement, StatutEcheance
+from app.modules.paiements.models import (
+    Echeance,
+    LigneEcheance,
+    Paiement,
+    StatutEcheance,
+    TypePaiement,
+)
+from app.shared.periode import dernier_jour, premier_jour
 
 
 class EcheanceRepository:
@@ -72,6 +79,26 @@ class PaiementRepository:
         resultat = await self._session.execute(
             select(Paiement)
             .where(Paiement.eleve_id == eleve_id)
+            .order_by(Paiement.date_paiement.desc(), Paiement.id.desc())
+        )
+        return list(resultat.scalars().all())
+
+    async def lister_par_periode(self, periode: str) -> list[Paiement]:
+        """Mensualités de `periode`, et frais d'inscription payés dans le
+        mois calendaire de `periode` — même définition que le dashboard
+        (§8.4) pour rester cohérent avec `montant_total_encaisse`."""
+        borne_debut = premier_jour(periode)
+        borne_fin = dernier_jour(periode)
+        resultat = await self._session.execute(
+            select(Paiement)
+            .where(
+                (Paiement.type == TypePaiement.MENSUALITE) & (Paiement.periode == periode)
+                | (
+                    (Paiement.type == TypePaiement.INSCRIPTION)
+                    & (Paiement.date_paiement >= borne_debut)
+                    & (Paiement.date_paiement <= borne_fin)
+                )
+            )
             .order_by(Paiement.date_paiement.desc(), Paiement.id.desc())
         )
         return list(resultat.scalars().all())
