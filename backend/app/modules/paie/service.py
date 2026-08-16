@@ -29,7 +29,7 @@ from app.modules.paie.schemas import AjustementPaieRequete
 from app.modules.paiements.models import ModePaiement
 from app.modules.professeurs.repository import AffectationRepository, ProfesseurRepository
 from app.modules.referentiel.repository import ParametreRepository, TarifProfesseurRepository
-from app.shared.periode import dernier_jour, premier_jour
+from app.shared.periode import dernier_jour, periode_suivante, premier_jour
 
 _BASE_CALCUL_PAR_DEFAUT = "inscrits"  # décision D4
 
@@ -68,12 +68,13 @@ class PaieService:
             paie_existante = await self._paies.get_par_cle(professeur.id, periode)
             if paie_existante is not None:
                 if paie_existante.statut != StatutPaie.BROUILLON:
-                    raise ConflitMetier(
-                        f"La paie de {professeur.prenom} {professeur.nom} pour {periode} est "
-                        f"déjà {paie_existante.statut.value.lower()} — une correction passe par "
-                        "une ligne d'ajustement sur la période suivante, jamais par une "
-                        "régénération de la paie verrouillée."
-                    )
+                    # Verrouillée : on ne touche pas à cette paie et on passe
+                    # au professeur suivant. L'admin valide au fil de l'eau —
+                    # une génération groupée ne doit pas échouer en bloc dès
+                    # qu'UN professeur est déjà validé (voir CLAUDE.md :
+                    # correction = ligne d'ajustement sur la période suivante,
+                    # jamais une régénération de la paie verrouillée).
+                    continue
                 await self._lignes.supprimer_lignes_generees(paie_existante.id)
                 paie = paie_existante
             else:
@@ -217,6 +218,12 @@ class PaieService:
             raise RessourceIntrouvable(
                 f"Aucune paie pour le professeur {donnees.professeur_id} en {donnees.periode} — "
                 "générez d'abord la paie de cette période avant d'y ajouter un ajustement."
+            )
+        if paie.statut != StatutPaie.BROUILLON:
+            raise ConflitMetier(
+                f"La paie de {donnees.periode} est déjà {paie.statut.value.lower()} — "
+                "une régularisation se fait par une ligne d'ajustement sur la paie de la "
+                f"période suivante ({periode_suivante(donnees.periode)}), pas sur celle-ci."
             )
 
         lignes_existantes = await self._lignes.lister_par_paie(paie.id)

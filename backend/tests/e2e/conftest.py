@@ -14,6 +14,23 @@ puis chaque test reçoit une session et un client HTTP propres ; les tables
 sont vidées après chaque test pour l'isolation (les endpoints commitent
 eux-mêmes, un simple rollback ne suffirait pas).
 
+Le moteur SQLAlchemy (`_moteur`) et le TRUNCATE (`_isolation`) sont maintenant
+partagés entre `session` et `client` AU SEIN D'UN MÊME TEST — un test qui
+demande les deux fixtures ne crée plus deux moteurs ni ne tronque deux fois.
+
+⚠ Le moteur reste de portée FONCTION (un par test), pas session : une
+première version partageait un moteur unique pour toute la session, avec
+`asyncio_default_fixture_loop_scope = "session"` dans pyproject.toml pour
+que les connexions asyncpg (liées à la boucle qui les a ouvertes) restent
+valides d'un test à l'autre. Ça a provoqué des connexions/transactions
+fuyant d'un test à l'autre (tâches de fond de l'ASGI qui ne se terminaient
+plus jamais avec la boucle, puisque la boucle ne se termine plus entre les
+tests) — `TRUNCATE` se retrouvait bloqué derrière une transaction "idle in
+transaction" orpheline, parfois pendant des heures. Revenir à un moteur par
+test élimine ce risque ; le gain de performance abandonné (recréer un pool
+de connexions par test) était de toute façon secondaire face à celui du
+TRUNCATE et de la création de moteur dédupliqués au sein d'un même test.
+
 Volontairement dans `tests/e2e/`, pas à la racine de `tests/` : un conftest
 racine avec ces fixtures en `autouse` ferait démarrer un conteneur Postgres
 (ou exiger `GEP_TEST_DATABASE_URL`) même pour les tests unitaires purs de
@@ -110,24 +127,41 @@ async def _vider_toutes_les_tables(moteur: AsyncEngine) -> None:
 
 
 @pytest_asyncio.fixture
-async def session(_url_asyncpg: str) -> AsyncGenerator[AsyncSession, None]:
+async def _moteur(_url_asyncpg: str) -> AsyncGenerator[AsyncEngine, None]:
+    """Un moteur par test (voir l'avertissement en tête de fichier sur
+    pourquoi ce n'est délibérément PAS une fixture de portée session) —
+    partagé entre `session` et `client` uniquement au sein de ce même test,
+    via `_isolation`."""
+
     moteur = create_async_engine(_url_asyncpg)
-    fabrique = async_sessionmaker(moteur, expire_on_commit=False)
-
-    async with fabrique() as s:
-        yield s
-
-    await _vider_toutes_les_tables(moteur)
+    yield moteur
     await moteur.dispose()
 
 
 @pytest_asyncio.fixture
-async def client(_url_asyncpg: str) -> AsyncGenerator[AsyncClient, None]:
+async def _isolation(_moteur: AsyncEngine) -> AsyncGenerator[None, None]:
+    """Vide les tables APRÈS le test, une seule fois — `session` et `client`
+    en dépendent tous les deux mais pytest ne l'instancie qu'une fois par
+    test ; comme sa teardown a été enregistrée avant les leurs (elle est
+    résolue en premier), elle s'exécute en dernier, une fois que la session
+    ORM et le client HTTP du test sont déjà fermés."""
+    yield
+    await _vider_toutes_les_tables(_moteur)
+
+
+@pytest_asyncio.fixture
+async def session(_moteur: AsyncEngine, _isolation: None) -> AsyncGenerator[AsyncSession, None]:
+    fabrique = async_sessionmaker(_moteur, expire_on_commit=False)
+    async with fabrique() as s:
+        yield s
+
+
+@pytest_asyncio.fixture
+async def client(_moteur: AsyncEngine, _isolation: None) -> AsyncGenerator[AsyncClient, None]:
     from app.db.session import get_session
     from app.main import app
 
-    moteur = create_async_engine(_url_asyncpg)
-    fabrique = async_sessionmaker(moteur, expire_on_commit=False)
+    fabrique = async_sessionmaker(_moteur, expire_on_commit=False)
 
     async def _get_session_test() -> AsyncGenerator[AsyncSession, None]:
         async with fabrique() as s:
@@ -139,5 +173,3 @@ async def client(_url_asyncpg: str) -> AsyncGenerator[AsyncClient, None]:
         yield ac
 
     app.dependency_overrides.clear()
-    await _vider_toutes_les_tables(moteur)
-    await moteur.dispose()

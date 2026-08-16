@@ -43,9 +43,16 @@ async def _jeton_admin(
 
 
 async def _jeton(
-    client: AsyncClient, session: AsyncSession, *, role: RoleUtilisateur, email: str
+    client: AsyncClient,
+    session: AsyncSession,
+    *,
+    role: RoleUtilisateur,
+    email: str,
+    professeur_id: int | None = None,
 ) -> str:
-    utilisateur = await construire_utilisateur(session, email=email, role=role)
+    utilisateur = await construire_utilisateur(
+        session, email=email, role=role, professeur_id=professeur_id
+    )
     session.add(utilisateur)
     await session.commit()
 
@@ -348,9 +355,12 @@ class TestGenerationPaie:
         assert detail.json()["lignes"][0]["montant_cents"] == 2500
         assert detail.json()["total_cents"] == 2500
 
-    async def test_regeneration_paie_validee_refusee(
+    async def test_regeneration_paie_validee_ignoree_silencieusement(
         self, client: AsyncClient, session: AsyncSession
     ):
+        """Régénérer une période où la seule paie existante est déjà VALIDEE
+        ne doit ni la toucher, ni faire échouer l'appel : elle est ignorée,
+        `nombre_generees` retombe à 0 (voir CLAUDE.md — verrouillage)."""
         jeton, utilisateur_id = await _jeton_admin(client, session)
         headers = {"Authorization": f"Bearer {jeton}"}
 
@@ -379,8 +389,89 @@ class TestGenerationPaie:
         assert valider.json()["statut"] == "VALIDEE"
 
         rep = await client.post("/api/paie/generer", json={"periode": PERIODE}, headers=headers)
-        assert rep.status_code == 409
-        assert professeur.nom in rep.json()["detail"]
+        assert rep.status_code == 200
+        assert rep.json()["nombre_generees"] == 0
+
+        detail = await client.get(f"/api/paie/{paie_id}", headers=headers)
+        assert detail.json()["statut"] == "VALIDEE"
+
+    async def test_generation_partielle_ne_touche_pas_les_paies_verrouillees(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """L'admin valide au fil de l'eau : dès qu'un professeur est validé
+        pour la période, régénérer ne doit pas empêcher de générer/régénérer
+        les autres professeurs encore en brouillon."""
+        jeton, utilisateur_id = await _jeton_admin(client, session)
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        annee = await creer_annee_scolaire(session)
+        # Deux niveaux distincts : le couple (année, matière, niveau) est
+        # unique par professeur (décision D3) — les deux affectations de ce
+        # test ne peuvent pas partager le même niveau.
+        niveau_valide = await creer_niveau(session, code="1BAC", ordre=5)
+        niveau_brouillon = await creer_niveau(session, code="2BAC", ordre=6)
+        matiere = await creer_matiere(session)
+        professeur_valide = await creer_professeur(session, nom="Valide", prenom="Prof")
+        professeur_brouillon = await creer_professeur(session, nom="Brouillon", prenom="Prof")
+        await creer_tarif_professeur(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau_valide.code,
+            matiere_id=matiere.id,
+            montant_par_eleve_cents=2500,
+        )
+        await creer_tarif_professeur(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau_brouillon.code,
+            matiere_id=matiere.id,
+            montant_par_eleve_cents=2500,
+        )
+        await creer_affectation(
+            session,
+            professeur_id=professeur_valide.id,
+            matiere_id=matiere.id,
+            niveau_code=niveau_valide.code,
+            annee_scolaire_id=annee.id,
+        )
+        await creer_affectation(
+            session,
+            professeur_id=professeur_brouillon.id,
+            matiere_id=matiere.id,
+            niveau_code=niveau_brouillon.code,
+            annee_scolaire_id=annee.id,
+        )
+        await _creer_eleve(
+            session,
+            utilisateur_id=utilisateur_id,
+            niveau_code=niveau_valide.code,
+            annee_scolaire_id=annee.id,
+            matiere_id=matiere.id,
+            matricule="ELEVE-PARTIEL",
+        )
+
+        premiere = await client.post(
+            "/api/paie/generer", json={"periode": PERIODE}, headers=headers
+        )
+        assert premiere.json()["nombre_generees"] == 2
+
+        paies = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()
+        paie_validee = next(p for p in paies if p["professeur_id"] == professeur_valide.id)
+        await client.post(f"/api/paie/{paie_validee['id']}/valider", headers=headers)
+
+        seconde = await client.post("/api/paie/generer", json={"periode": PERIODE}, headers=headers)
+        assert seconde.status_code == 200
+        assert seconde.json()["nombre_generees"] == 1
+
+        paies_apres = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()
+        statut_valide = next(p for p in paies_apres if p["professeur_id"] == professeur_valide.id)[
+            "statut"
+        ]
+        statut_brouillon = next(
+            p for p in paies_apres if p["professeur_id"] == professeur_brouillon.id
+        )["statut"]
+        assert statut_valide == "VALIDEE"
+        assert statut_brouillon == "BROUILLON"
 
     async def test_base_calcul_paie_inscrits_par_defaut(
         self, client: AsyncClient, session: AsyncSession
@@ -593,7 +684,13 @@ class TestValidationEtPaiement:
 
 
 class TestAjustement:
-    async def test_ajustement_sur_paie_validee(self, client: AsyncClient, session: AsyncSession):
+    async def test_ajustement_sur_paie_validee_refuse(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """Le verrou de la paie (CLAUDE.md) s'applique aussi à l'ajustement :
+        une paie VALIDEE ou PAYEE ne doit plus jamais voir son total_cents
+        bouger, même via une ligne d'ajustement — la régularisation se fait
+        sur la période SUIVANTE (voir test_ajustement_nominal_sur_periode_suivante)."""
         jeton, _ = await _jeton_admin(client, session)
         headers = {"Authorization": f"Bearer {jeton}"}
 
@@ -629,11 +726,71 @@ class TestAjustement:
             },
             headers=headers,
         )
+        assert rep.status_code == 409
+
+        paie = (await client.get(f"/api/paie/{paie_id}", headers=headers)).json()
+        assert paie["total_cents"] == 0
+        assert not any(ligne["est_ajustement"] for ligne in paie["lignes"])
+
+    async def test_ajustement_nominal_sur_periode_suivante(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """Cas nominal : la régularisation d'une paie VALIDEE de {PERIODE}
+        est portée sur la paie (BROUILLON) de la période suivante."""
+        jeton, utilisateur_id = await _jeton_admin(client, session)
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        annee = await creer_annee_scolaire(session)
+        niveau = await creer_niveau(session)
+        matiere = await creer_matiere(session)
+        professeur = await creer_professeur(session)
+        await creer_tarif_professeur(
+            session, annee_scolaire_id=annee.id, niveau_code=niveau.code, matiere_id=matiere.id
+        )
+        await creer_affectation(
+            session,
+            professeur_id=professeur.id,
+            matiere_id=matiere.id,
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+        )
+
+        await client.post("/api/paie/generer", json={"periode": PERIODE}, headers=headers)
+        paie_id = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()[0][
+            "id"
+        ]
+        await client.post(f"/api/paie/{paie_id}/valider", headers=headers)
+
+        periode_suivante = "2025-11"
+        # La paie de la période suivante doit exister (en BROUILLON) avant
+        # de pouvoir y porter l'ajustement — générée normalement le mois
+        # suivant, ici on la génère explicitement pour le test.
+        await client.post("/api/paie/generer", json={"periode": periode_suivante}, headers=headers)
+
+        rep = await client.post(
+            "/api/paie/ajustement",
+            json={
+                "professeur_id": professeur.id,
+                "periode": periode_suivante,
+                "matiere_id": matiere.id,
+                "niveau_code": niveau.code,
+                "montant_cents": 5000,
+                "motif": "Oubli d'un élève sur la paie de " + PERIODE,
+            },
+            headers=headers,
+        )
         assert rep.status_code == 201
         assert rep.json()["est_ajustement"] is True
 
-        paie = (await client.get(f"/api/paie/{paie_id}", headers=headers)).json()
-        assert paie["total_cents"] == 5000
+        paie_periode = (await client.get(f"/api/paie/{paie_id}", headers=headers)).json()
+        assert paie_periode["total_cents"] == 0
+
+        paies_suivantes = (
+            await client.get(f"/api/paie?periode={periode_suivante}", headers=headers)
+        ).json()
+        paie_suivante_id = paies_suivantes[0]["id"]
+        paie_suivante = (await client.get(f"/api/paie/{paie_suivante_id}", headers=headers)).json()
+        assert paie_suivante["total_cents"] == 5000
 
     async def test_professeur_introuvable_sans_paie_pour_la_periode(
         self, client: AsyncClient, session: AsyncSession
@@ -678,21 +835,43 @@ class TestAjustement:
 
 
 class TestMesPaies:
-    async def test_professeur_consulte_ses_paies(self, client: AsyncClient, session: AsyncSession):
+    async def test_professeur_consulte_sa_paie_et_pas_celle_dun_autre(
+        self, client: AsyncClient, session: AsyncSession
+    ):
         jeton_admin, _ = await _jeton_admin(client, session, email="admin3@test.ma")
         headers_admin = {"Authorization": f"Bearer {jeton_admin}"}
 
         annee = await creer_annee_scolaire(session)
         niveau = await creer_niveau(session)
-        matiere = await creer_matiere(session)
-        professeur = await creer_professeur(session)
+        # Deux matières distinctes : le couple (année, matière, niveau) est
+        # unique par professeur (décision D3).
+        matiere_mon_prof = await creer_matiere(session, code="MATH", libelle="Mathématiques")
+        matiere_autre_prof = await creer_matiere(session, code="PHYSIQUE", libelle="Physique")
+        mon_professeur = await creer_professeur(session, nom="Alaoui", prenom="Karim")
+        autre_professeur = await creer_professeur(session, nom="Bennani", prenom="Yassine")
         await creer_tarif_professeur(
-            session, annee_scolaire_id=annee.id, niveau_code=niveau.code, matiere_id=matiere.id
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_mon_prof.id,
+        )
+        await creer_tarif_professeur(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_autre_prof.id,
         )
         await creer_affectation(
             session,
-            professeur_id=professeur.id,
-            matiere_id=matiere.id,
+            professeur_id=mon_professeur.id,
+            matiere_id=matiere_mon_prof.id,
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+        )
+        await creer_affectation(
+            session,
+            professeur_id=autre_professeur.id,
+            matiere_id=matiere_autre_prof.id,
             niveau_code=niveau.code,
             annee_scolaire_id=annee.id,
         )
@@ -703,15 +882,16 @@ class TestMesPaies:
             session,
             role=RoleUtilisateur.PROFESSEUR,
             email="prof1@test.ma",
+            professeur_id=mon_professeur.id,
         )
-        # Le compte professeur créé par le helper n'est pas lié à `professeur`
-        # ci-dessus : on ne peut pas tester le contenu exact facilement sans
-        # état partagé, seulement l'accès et la forme de la réponse.
         rep = await client.get(
             "/api/paie/mes-paies", headers={"Authorization": f"Bearer {jeton_prof}"}
         )
         assert rep.status_code == 200
-        assert isinstance(rep.json(), list)
+        paies = rep.json()
+        assert len(paies) == 1
+        assert paies[0]["professeur_id"] == mon_professeur.id
+        assert all(p["professeur_id"] != autre_professeur.id for p in paies)
 
     async def test_caissier_ne_peut_pas_consulter_mes_paies(
         self, client: AsyncClient, session: AsyncSession
