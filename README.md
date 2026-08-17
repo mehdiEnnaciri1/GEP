@@ -30,6 +30,22 @@ Le port hôte de l'API est **8010** (le 8000 est déjà pris par un autre projet
 sur ce poste — voir `docker-compose.yml`), remappé en interne vers le port 8000
 du conteneur, sur lequel `uvicorn` écoute réellement.
 
+Le port hôte de postgres est **5442** (le 5432 est déjà pris par un PostgreSQL
+natif installé sur ce poste — voir `docker-compose.yml`), remappé en interne
+vers le port 5432 du conteneur. Les autres conteneurs (`api`) parlent à
+postgres via le réseau Docker interne sur le port 5432 ; seuls les outils
+externes connectés depuis l'hôte (pgAdmin, `psql`) doivent utiliser 5442.
+
+## Front — thème et assets
+
+Thème shadcn/ui (violet/crème, tokens `oklch`) dans `frontend/src/index.css`.
+Mise en page à barre latérale : `frontend/src/components/layout/MiseEnPage.tsx`.
+
+Images statiques (logo, favicon, illustration de connexion, états vides,
+avatar par défaut, bannière) dans `frontend/public/`, générées par IA puis
+retouchées (transparence, recadrage, compression) — voir l'historique de
+commits pour les prompts utilisés si de nouvelles variantes sont nécessaires.
+
 ## Si `make` n'est pas installé
 
 Ce dépôt suppose GNU Make disponible (`choco install make`, `winget install
@@ -95,7 +111,7 @@ connexion à une base déjà là :
 
 ```bash
 docker compose exec postgres psql -U gep -c "CREATE DATABASE gep_test;"
-export GEP_TEST_DATABASE_URL="postgresql+asyncpg://gep:<mot-de-passe-de-.env>@localhost:5432/gep_test"
+export GEP_TEST_DATABASE_URL="postgresql+asyncpg://gep:<mot-de-passe-de-.env>@localhost:5442/gep_test"
 cd backend && PYTHONIOENCODING=utf-8 .venv/Scripts/python -m pytest tests/e2e -v
 ```
 

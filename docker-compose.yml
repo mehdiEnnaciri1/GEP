@@ -6,7 +6,12 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changez_moi}
       POSTGRES_DB: ${POSTGRES_DB:-gep}
     ports:
-      - "5432:5432"
+      # Port hôte 5442 : le 5432 est déjà pris par un PostgreSQL natif installé
+      # sur ce poste (service Windows postgresql-x64-16). Les autres conteneurs
+      # (api) parlent à postgres via le réseau Docker interne sur le port 5432,
+      # ce remap ne concerne que les outils externes (pgAdmin) connectés depuis
+      # l'hôte.
+      - "5442:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
