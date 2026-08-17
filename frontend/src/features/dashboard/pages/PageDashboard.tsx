@@ -1,6 +1,22 @@
 import { useState } from 'react'
 
 import {
+  AlertCircleIcon,
+  BanknoteIcon,
+  GraduationCapIcon,
+  ReceiptIcon,
+  TagsIcon,
+  TrendingUpIcon,
+  UsersIcon,
+  WalletIcon,
+  type LucideIcon,
+} from 'lucide-react'
+
+import { Card, CardContent } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Progress } from '@/components/ui/progress'
+import { Skeleton } from '@/components/ui/skeleton'
+import {
   useIndicateursComplets,
   useIndicateursRestreints,
 } from '@/features/dashboard/hooks/useDashboard'
@@ -14,12 +30,37 @@ function periodeCourante(): string {
   return `${maintenant.getFullYear()}-${String(maintenant.getMonth() + 1).padStart(2, '0')}`
 }
 
-function Carte({ titre, valeur }: { titre: string; valeur: string }) {
+const ACCENTS = {
+  bleu: 'bg-chart-4/15 text-chart-4',
+  violet: 'bg-chart-5/15 text-chart-5',
+  emeraude: 'bg-chart-1/15 text-chart-1',
+  ambre: 'bg-chart-3/15 text-chart-3',
+  rose: 'bg-chart-2/15 text-chart-2',
+} as const
+
+function CarteIndicateur({
+  titre,
+  valeur,
+  icone: Icone,
+  accent,
+}: {
+  titre: string
+  valeur: string
+  icone: LucideIcon
+  accent: keyof typeof ACCENTS
+}) {
   return (
-    <div className="space-y-1 rounded-lg border p-4">
-      <p className="text-xs text-muted-foreground">{titre}</p>
-      <p className="text-lg font-medium">{valeur}</p>
-    </div>
+    <Card>
+      <CardContent className="flex items-start gap-3">
+        <div className={`flex size-10 shrink-0 items-center justify-center rounded-xl ${ACCENTS[accent]}`}>
+          <Icone className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <p className="truncate text-xs text-muted-foreground">{titre}</p>
+          <p className="font-heading truncate text-xl font-semibold">{valeur}</p>
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -46,66 +87,106 @@ export function PageDashboard() {
     niveaux?.find((n) => n.code === niveauCode)?.libelle ?? niveauCode
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <div className="flex items-center gap-3">
-        <h1 className="text-lg font-medium">Tableau de bord</h1>
-        <input
+    <div className="mx-auto max-w-5xl space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="font-heading text-xl font-semibold">
+            Bonjour{utilisateur ? `, ${utilisateur.prenom}` : ''}
+          </h1>
+          <p className="text-sm text-muted-foreground">Voici l'activité du centre pour la période sélectionnée.</p>
+        </div>
+        <Input
           value={periode}
           onChange={(e) => setPeriode(e.target.value)}
-          className="w-28 rounded-lg border border-input bg-transparent px-2 py-1 text-sm"
+          className="w-32 bg-card"
         />
       </div>
 
       {isLoading || !indicateurs ? (
-        <p className="text-sm text-muted-foreground">Chargement…</p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-20 rounded-xl" />
+          ))}
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-            <Carte titre="Élèves" valeur={String(indicateurs.nombre_eleves_total)} />
-            <Carte titre="Professeurs" valeur={String(indicateurs.nombre_professeurs)} />
-            <Carte
+            <CarteIndicateur
+              titre="Élèves"
+              valeur={String(indicateurs.nombre_eleves_total)}
+              icone={GraduationCapIcon}
+              accent="bleu"
+            />
+            <CarteIndicateur
+              titre="Professeurs"
+              valeur={String(indicateurs.nombre_professeurs)}
+              icone={UsersIcon}
+              accent="violet"
+            />
+            <CarteIndicateur
               titre="Encaissé ce mois"
               valeur={formaterMontant(indicateurs.montant_total_encaisse_cents)}
+              icone={WalletIcon}
+              accent="emeraude"
             />
-            <Carte
+            <CarteIndicateur
               titre="Frais d'inscription cumulés"
               valeur={formaterMontant(indicateurs.montant_frais_inscription_cumules_cents)}
+              icone={TagsIcon}
+              accent="ambre"
             />
-            <Carte
+            <CarteIndicateur
               titre="Impayés"
               valeur={formaterMontant(indicateurs.montant_impayes_cents)}
+              icone={AlertCircleIcon}
+              accent="rose"
             />
             {estComplet(indicateurs) && (
               <>
-                <Carte
+                <CarteIndicateur
                   titre="Charges du mois"
                   valeur={formaterMontant(indicateurs.total_charges_cents)}
+                  icone={ReceiptIcon}
+                  accent="ambre"
                 />
-                <Carte
+                <CarteIndicateur
                   titre="Paie du mois"
                   valeur={formaterMontant(indicateurs.total_paie_cents)}
+                  icone={BanknoteIcon}
+                  accent="violet"
                 />
-                <Carte
+                <CarteIndicateur
                   titre="Bénéfice net"
                   valeur={formaterMontant(indicateurs.benefice_net_cents)}
+                  icone={TrendingUpIcon}
+                  accent="emeraude"
                 />
               </>
             )}
           </div>
 
-          <section className="space-y-2">
-            <h2 className="text-sm font-medium">Élèves par niveau</h2>
-            <table className="w-full text-sm">
-              <tbody>
-                {indicateurs.nombre_eleves_par_niveau.map((n) => (
-                  <tr key={n.niveau_code} className="border-b">
-                    <td className="py-1">{libelleNiveau(n.niveau_code)}</td>
-                    <td className="py-1 text-right">{n.nombre}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </section>
+          <Card>
+            <CardContent>
+              <h2 className="mb-4 text-sm font-medium">Élèves par niveau</h2>
+              <div className="space-y-3">
+                {indicateurs.nombre_eleves_par_niveau.map((n) => {
+                  const proportion =
+                    indicateurs.nombre_eleves_total > 0
+                      ? (n.nombre / indicateurs.nombre_eleves_total) * 100
+                      : 0
+                  return (
+                    <div key={n.niveau_code} className="space-y-1.5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span>{libelleNiveau(n.niveau_code)}</span>
+                        <span className="text-muted-foreground">{n.nombre}</span>
+                      </div>
+                      <Progress value={proportion} className="h-2" />
+                    </div>
+                  )
+                })}
+              </div>
+            </CardContent>
+          </Card>
         </>
       )}
     </div>
