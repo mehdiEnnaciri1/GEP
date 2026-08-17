@@ -53,6 +53,11 @@ export function PageImpayes() {
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>
+      ) : impayes?.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <img src="/vide-finances.png" alt="" className="size-32" />
+          <p className="text-sm text-muted-foreground">Aucun impayé pour cette période.</p>
+        </div>
       ) : (
         <table className="w-full text-sm">
           <thead>
@@ -90,13 +95,6 @@ export function PageImpayes() {
                 </td>
               </tr>
             ))}
-            {impayes?.length === 0 && (
-              <tr>
-                <td colSpan={6} className="py-4 text-center text-muted-foreground">
-                  Aucun impayé pour cette période.
-                </td>
-              </tr>
-            )}
           </tbody>
         </table>
       )}

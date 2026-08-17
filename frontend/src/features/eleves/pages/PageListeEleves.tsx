@@ -81,6 +81,11 @@ export function PageListeEleves() {
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>
+      ) : data?.elements.length === 0 ? (
+        <div className="flex flex-col items-center gap-3 py-10 text-center">
+          <img src="/vide-eleves.png" alt="" className="size-32" />
+          <p className="text-sm text-muted-foreground">Aucun élève ne correspond à cette recherche.</p>
+        </div>
       ) : (
         <>
           <table className="w-full text-sm">
