@@ -39,13 +39,27 @@ export function PageConnexion() {
   })
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Connexion</CardTitle>
-          <CardDescription>Centre de soutien scolaire — GEP</CardDescription>
-        </CardHeader>
-        <CardContent>
+    <div className="flex min-h-screen bg-background">
+      <div className="relative hidden flex-1 items-center justify-center overflow-hidden bg-secondary/40 lg:flex">
+        <div className="pointer-events-none absolute -top-24 -left-24 size-72 rounded-full bg-chart-5/15 blur-3xl" />
+        <div className="pointer-events-none absolute -right-24 -bottom-24 size-72 rounded-full bg-chart-1/15 blur-3xl" />
+        <img
+          src="/illustration-connexion.jpg"
+          alt="Salle de classe d'un centre de soutien scolaire"
+          className="relative max-h-[85vh] w-full max-w-lg rounded-2xl object-cover shadow-lg"
+        />
+      </div>
+
+      <div className="flex flex-1 items-center justify-center p-4">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <div className="mb-1 flex size-11 items-center justify-center rounded-xl bg-primary/10">
+              <img src="/logo.png" alt="" className="size-7" />
+            </div>
+            <CardTitle className="text-lg">Connexion</CardTitle>
+            <CardDescription>Centre de soutien scolaire — GEP</CardDescription>
+          </CardHeader>
+          <CardContent>
           <form onSubmit={onSubmit} className="space-y-4" noValidate>
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -78,7 +92,8 @@ export function PageConnexion() {
             </Button>
           </form>
         </CardContent>
-      </Card>
+        </Card>
+      </div>
     </div>
   )
 }
