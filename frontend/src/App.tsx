@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { BrowserRouter, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -24,22 +24,6 @@ import { PageMatieres } from '@/features/referentiel/pages/PageMatieres'
 import { PageParametres } from '@/features/referentiel/pages/PageParametres'
 import { PageRapports } from '@/features/rapports/pages/PageRapports'
 import { RouteProtegee } from '@/routes/RouteProtegee'
-import { useSessionStore } from '@/stores/session'
-
-function PageAccueil() {
-  const utilisateur = useSessionStore((s) => s.utilisateur)
-
-  return (
-    <div className="flex min-h-[calc(100vh-3.5rem)] flex-col items-center justify-center gap-2">
-      <p className="text-muted-foreground text-sm">GEP — Gestion des Élèves et des Paiements</p>
-      {utilisateur && (
-        <p className="text-sm">
-          Connecté en tant que {utilisateur.prenom} {utilisateur.nom} ({utilisateur.role})
-        </p>
-      )}
-    </div>
-  )
-}
 
 function Racine() {
   const { pret } = useInitialiserSession()
@@ -52,7 +36,7 @@ function Racine() {
         <Route path="/connexion" element={<PageConnexion />} />
         <Route element={<RouteProtegee />}>
           <Route element={<MiseEnPage />}>
-            <Route path="/" element={<PageAccueil />} />
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="/dashboard" element={<PageDashboard />} />
             <Route path="/eleves" element={<PageListeEleves />} />
             <Route path="/eleves/nouveau" element={<PageCreationEleve />} />
