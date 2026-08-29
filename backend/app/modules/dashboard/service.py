@@ -76,17 +76,22 @@ class DashboardService:
         total_paie = await self._dashboard.total_paie_hors_brouillon(periode)
         benefice_net = restreints.montant_total_encaisse_cents - total_charges - total_paie
 
+        # Frais d'inscription cumulés, vue ADMIN uniquement : frais moins les
+        # charges HORS loyer — pas la somme brute que voit IndicateursRestreints
+        # (voir docstring du schéma). Le loyer ne réduit pas ce chiffre.
         total_loyer = await self._dashboard.total_loyer(periode)
-        marge_hors_loyer = restreints.montant_frais_inscription_cumules_cents - (
+        frais_inscription_nets = restreints.montant_frais_inscription_cumules_cents - (
             total_charges - total_loyer
         )
 
+        donnees = restreints.model_dump()
+        donnees["montant_frais_inscription_cumules_cents"] = frais_inscription_nets
+
         return IndicateursComplets(
-            **restreints.model_dump(),
+            **donnees,
             total_charges_cents=total_charges,
             total_paie_cents=total_paie,
             benefice_net_cents=benefice_net,
-            marge_hors_loyer_cents=marge_hors_loyer,
         )
 
     async def evolution_effectifs(self) -> EvolutionEffectifsReponse:

@@ -4,7 +4,6 @@ import {
   AlertCircleIcon,
   BanknoteIcon,
   GraduationCapIcon,
-  HomeIcon,
   ReceiptIcon,
   TagsIcon,
   TrendingUpIcon,
@@ -46,11 +45,13 @@ function CarteIndicateur({
   valeur,
   icone: Icone,
   accent,
+  sousTitre,
 }: {
   titre: string
   valeur: string
   icone: LucideIcon
   accent: keyof typeof ACCENTS
+  sousTitre?: string
 }) {
   return (
     <Card>
@@ -61,6 +62,7 @@ function CarteIndicateur({
         <div className="min-w-0">
           <p className="truncate text-xs text-muted-foreground">{titre}</p>
           <p className="font-heading truncate text-xl font-semibold">{valeur}</p>
+          {sousTitre && <p className="truncate text-xs text-muted-foreground">{sousTitre}</p>}
         </div>
       </CardContent>
     </Card>
@@ -140,6 +142,7 @@ export function PageDashboard() {
               valeur={formaterMontant(indicateurs.montant_frais_inscription_cumules_cents)}
               icone={TagsIcon}
               accent="ambre"
+              sousTitre={estComplet(indicateurs) ? 'net des charges hors loyer' : undefined}
             />
             <CarteIndicateur
               titre="Impayés"
@@ -166,12 +169,6 @@ export function PageDashboard() {
                   valeur={formaterMontant(indicateurs.benefice_net_cents)}
                   icone={TrendingUpIcon}
                   accent="emeraude"
-                />
-                <CarteIndicateur
-                  titre="Marge hors loyer"
-                  valeur={formaterMontant(indicateurs.marge_hors_loyer_cents)}
-                  icone={HomeIcon}
-                  accent="bleu"
                 />
               </>
             )}

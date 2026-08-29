@@ -17,7 +17,6 @@ export interface IndicateursComplets extends IndicateursRestreints {
   total_charges_cents: number
   total_paie_cents: number
   benefice_net_cents: number
-  marge_hors_loyer_cents: number
 }
 
 export interface PointEffectif {

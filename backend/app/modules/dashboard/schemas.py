@@ -23,16 +23,20 @@ class IndicateursRestreints(BaseModel):
 
 
 class IndicateursComplets(IndicateursRestreints):
-    """Vue admin : ajoute charges, paie et bénéfice net (décision D2)."""
+    """Vue admin : ajoute charges, paie et bénéfice net (décision D2).
+
+    `montant_frais_inscription_cumules_cents` est ICI recalculé différemment
+    que dans `IndicateursRestreints` — voir
+    docs/adr/2026-08-16-marge-hors-loyer.md (réécrit) : frais d'inscription
+    moins les charges hors loyer, pas la somme brute des encaissements.
+    Impossible de l'exposer au CAISSIER : le calcul repose sur les charges,
+    qu'il ne doit jamais voir (§6.6) — lui garde la somme brute héritée de
+    `IndicateursRestreints`. `benefice_net_cents` ci-dessus n'est pas affecté,
+    le loyer y compte normalement."""
 
     total_charges_cents: int
     total_paie_cents: int
     benefice_net_cents: int
-    # Indicateur de couverture, distinct du bénéfice net : le loyer reste
-    # compté dans total_charges_cents et benefice_net_cents ci-dessus, celui-ci
-    # est un indicateur supplémentaire, pas un remplacement — voir
-    # docs/adr/2026-08-16-marge-hors-loyer.md.
-    marge_hors_loyer_cents: int
 
 
 class PointEffectif(BaseModel):

@@ -604,13 +604,19 @@ total_loyer = Σ charge.montant_cents
     WHERE periode = P AND annule_le IS NULL
       AND categorie_charge.libelle = 'Loyer'
 
-MARGE_HORS_LOYER = encaissements_inscriptions - (total_charges - total_loyer)
+FRAIS_INSCRIPTION_CUMULES =
+    si CAISSIER : encaissements_inscriptions
+    si ADMIN    : encaissements_inscriptions - (total_charges - total_loyer)
 ```
 
-`MARGE_HORS_LOYER` est un indicateur de couverture distinct de `BENEFICE_NET`,
-pas un remplacement — le loyer continue de compter normalement dans
-`total_charges` et `BENEFICE_NET` ci-dessus (voir
-`docs/adr/2026-08-16-marge-hors-loyer.md`).
+`FRAIS_INSCRIPTION_CUMULES` se calcule **différemment selon le rôle**, ce qui
+est inhabituel dans ce modèle mais nécessaire ici : le calcul ADMIN retranche
+les charges hors loyer, une information que le CAISSIER n'a jamais le droit
+de voir (§6.6) — impossible de lui montrer la version nette sans exposer
+indirectement les charges. Voir
+`docs/adr/2026-08-16-marge-hors-loyer.md` (réécrit) pour le contexte. Le
+loyer continue de compter normalement dans `total_charges` et
+`BENEFICE_NET` ci-dessus — cette formule ne les affecte pas.
 
 > **Correction apportée au §9.** La formule du cahier des charges additionne
 > « encaissements totaux » et « total des frais d'inscription ». Si les frais
@@ -618,8 +624,8 @@ pas un remplacement — le loyer continue de compter normalement dans
 > `paiement.type` rend les deux ensembles disjoints et la formule redevient exacte.
 >
 > La ligne « Montant des frais d'inscription cumulées = Somme des frais – les charges
-> mensuelles » du §9 est traitée comme une erreur de rédaction : les frais cumulés
-> sont la simple somme des encaissements de type `INSCRIPTION`.
+> mensuelles » du §9 est en partie reprise ci-dessus, pour ADMIN seulement, avec le
+> loyer explicitement exclu des charges retranchées — voir l'ADR pour la justification.
 
 `total_paie` exclut les paies en `BROUILLON` : une paie non validée n'est pas un
 engagement du centre et ne doit pas dégrader le bénéfice affiché.

@@ -107,8 +107,8 @@ class DashboardRepository:
 
     async def total_loyer(self, periode: str) -> int:
         """Sous-ensemble de `total_charges` : uniquement la catégorie « Loyer »
-        (libellé exact, seed dans `app/db/seeds.py`) — sert l'indicateur
-        `marge_hors_loyer_cents` du dashboard (voir
+        (libellé exact, seed dans `app/db/seeds.py`) — sert au calcul ADMIN de
+        `montant_frais_inscription_cumules_cents` (voir
         docs/adr/2026-08-16-marge-hors-loyer.md)."""
         resultat = await self._session.execute(
             select(func.coalesce(func.sum(Charge.montant_cents), 0))
