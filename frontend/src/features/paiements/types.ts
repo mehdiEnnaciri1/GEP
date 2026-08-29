@@ -29,4 +29,5 @@ export interface EcheanceImpayee extends Echeance {
   eleve_nom: string
   eleve_prenom: string
   eleve_matricule: string
+  eleve_niveau_code: string
 }

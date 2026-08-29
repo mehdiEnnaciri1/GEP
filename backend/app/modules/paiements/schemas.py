@@ -62,6 +62,7 @@ class EcheanceImpayeePublique(EcheancePublique):
     eleve_nom: str
     eleve_prenom: str
     eleve_matricule: str
+    eleve_niveau_code: str
 
 
 class GenerationEcheancesRequete(BaseModel):

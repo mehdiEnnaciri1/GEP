@@ -79,7 +79,9 @@ class TestGenerationEcheances:
     ):
         jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin1@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
-        await _creer_eleve_avec_inscription(client, session, headers, tarif_cents=20000)
+        _, niveau_code, _ = await _creer_eleve_avec_inscription(
+            client, session, headers, tarif_cents=20000
+        )
 
         reponse = await client.post(
             "/api/paiements/generer-echeances", json={"periode": PERIODE}, headers=headers
@@ -91,6 +93,7 @@ class TestGenerationEcheances:
         assert len(impayes.json()) == 1
         assert impayes.json()[0]["montant_du_cents"] == 20000
         assert impayes.json()[0]["statut"] == "NON_PAYE"
+        assert impayes.json()[0]["eleve_niveau_code"] == niveau_code
 
     async def test_idempotent_ne_duplique_pas(self, client: AsyncClient, session: AsyncSession):
         jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin2@test.ma")

@@ -119,6 +119,7 @@ async def lister_impayes(
             eleve_nom=eleve.nom,
             eleve_prenom=eleve.prenom,
             eleve_matricule=eleve.matricule,
+            eleve_niveau_code=eleve.niveau_code,
         )
         for echeance, eleve in echeances_et_eleves
     ]
