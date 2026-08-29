@@ -6,8 +6,8 @@ Cette demande touche une question déjà signalée comme ouverte dans D8
 (`docs/03-decisions-ouvertes.md`) : « une remise changerait le modèle, il
 faudrait une notion de réduction sur l'échéance ». Le §8.1 du modèle de
 données ne connaît qu'un seul mode de calcul du montant dû mensuel : la somme
-des tarifs des matières inscrites. Deux nouveaux besoins, tranchés après
-clarification avec l'utilisateur :
+des tarifs des matières inscrites. Deux besoins, désormais fixés par D10 et
+D11 (`docs/03-decisions-ouvertes.md`) :
 
 - **Pack** : un élève qui prend toutes les matières d'un niveau paie un
   forfait, pas la somme des tarifs individuels.
@@ -16,37 +16,55 @@ clarification avec l'utilisateur :
 
 Dans les deux cas, la rémunération des professeurs ne doit **rien** changer :
 elle reste calculée matière par matière, sur les mêmes `inscription_matiere`
-et les mêmes `tarif_professeur` qu'aujourd'hui.
+et les mêmes `tarif_professeur` qu'aujourd'hui — voir D10 sur ce point
+précis.
 
 ## Décision
 
-Nouvelle colonne `eleve.mode_facturation` (`NORMAL` | `PACK` |
-`PERSONNALISE`, défaut `NORMAL`) et `eleve.montant_mensuel_fixe_cents`
-(NULL en `NORMAL`, obligatoire sinon — contrainte `CHECK` en base). Les deux
-modes non-`NORMAL` sont mutuellement exclusifs et remplacent entièrement le
-mode `NORMAL`, pas cumulables (choix retenu après clarification). Le montant
-dû mensuel (§8.1) devient :
+**Le pack désigne littéralement toutes les matières tarifées du niveau.** Un
+élève en pack a une `inscription_matiere` réelle par matière (`matiere_id`
+NOT NULL comme toute inscription), visible et comptée normalement par chaque
+professeur — le pack n'est qu'un mode de tarification côté élève, jamais un
+type d'inscription à part. Le tarif de chaque inscription est le forfait
+pack fractionné à parts égales entre les matières (division entière, le
+reste en centimes va à la matière de plus petit id) — la somme des
+inscriptions retombe donc exactement sur le forfait.
+
+`eleve.est_pack BOOLEAN` marque le mode. Le prix du forfait est un montant
+fixe par (année, niveau) dans une table dédiée `tarif_pack` — copié dans les
+inscriptions à l'engagement, jamais recalculé après coup (même principe D1
+que `tarif_eleve`) : modifier le tarif pack du référentiel ne change rien
+aux élèves déjà en pack.
+
+**La réduction ne touche à aucune inscription.** `eleve.reduction_mensuelle_cents`
+(NULL = pas de réduction) est un montant fixe saisi à la main, copié tel
+quel, sans référence au référentiel. L'élève choisit ses matières comme en
+facturation normale — ces inscriptions réelles servent à la paie
+professeur, seul le calcul de l'échéance de l'élève les ignore.
+
+**Pack et réduction sont mutuellement exclusifs** (contrainte
+`ck_eleve_pack_reduction_exclusifs`) : un élève est soit en facturation
+normale, soit en pack, soit en réduction, jamais deux à la fois.
+
+Le montant dû mensuel (§8.1) devient :
 
 ```
-si mode_facturation = NORMAL : Σ inscription_matiere.tarif_mensuel_cents
-sinon                        : eleve.montant_mensuel_fixe_cents
+si reduction_mensuelle_cents IS NOT NULL : reduction_mensuelle_cents
+sinon                                    : Σ inscription_matiere.tarif_mensuel_cents
 ```
 
-**Pack.** « Toutes les matières du niveau » n'a pas de définition native dans
-ce modèle — les matières ne sont pas rattachées à un niveau, seul un tarif
-`tarif_eleve(niveau, matière)` les relie. Le pack se compose donc de toutes
-les matières ayant un tarif pour ce niveau. Une `inscription_matiere` réelle
-est créée pour chacune, avec son vrai tarif — c'est ce qui garantit que la
-paie professeur (comptage par matière/niveau) n'est pas affectée. Le prix du
-pack est un montant fixe par (année, niveau), saisi par l'admin dans une
-nouvelle table `tarif_pack` (même principe D1 que `tarif_eleve` : copié à
-l'engagement dans `montant_mensuel_fixe_cents`, jamais recalculé après coup).
+Aucune branche spéciale pour le pack dans cette formule : ses inscriptions
+portent déjà le tarif fractionné, la somme suffit.
 
-**Réduction.** Le montant est saisi directement à la création de l'élève et
-copié tel quel dans `montant_mensuel_fixe_cents` — pas de notion de
-pourcentage ni de référence au référentiel. L'élève choisit ses matières
-normalement (comme en mode `NORMAL`), pour que la paie professeur reste
-correcte.
+**Échéance et `ligne_echeance`.** En réduction, une seule `ligne_echeance`
+est écrite (montant = la réduction), rattachée à la première matière suivie
+(par id) pour satisfaire la clé étrangère — elle ne prétend pas répartir le
+montant par matière, c'est un simple ancrage. Sinon (normal ou pack), une
+ligne par matière au tarif figé, comme avant.
 
-Les deux modes se choisissent uniquement à la création de l'élève dans cette
-version — pas de changement de mode a posteriori sur un élève existant.
+**Activation/désactivation après création.** Activer le pack clôture les
+inscriptions en cours et en recrée une par matière tarifée du niveau, au
+tarif fractionné. Désactiver le pack clôture les inscriptions sans en
+recréer — une nouvelle inscription individuelle est un acte séparé. La
+réduction s'active/se désactive sans toucher aux inscriptions. Ces deux
+opérations sont ouvertes à ADMIN et CAISSIER (comme la création d'élève).

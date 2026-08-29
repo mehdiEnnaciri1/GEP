@@ -107,6 +107,25 @@ CREATE TABLE tarif_eleve (
 );
 ```
 
+### tarif_pack
+
+Forfait couvrant toutes les matières tarifées d'un niveau — voir
+`docs/adr/2026-08-29-pack-et-reduction.md` (D10). Clé (année, niveau)
+seulement, pas de matière : un seul montant par niveau, pas un croisement.
+
+```sql
+CREATE TABLE tarif_pack (
+    id                BIGSERIAL PRIMARY KEY,
+    annee_scolaire_id BIGINT     NOT NULL REFERENCES annee_scolaire(id),
+    niveau_code       VARCHAR(5) NOT NULL REFERENCES niveau(code),
+    montant_cents     BIGINT     NOT NULL,
+    cree_le           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    modifie_le        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CONSTRAINT ck_tarif_pack_positif CHECK (montant_cents >= 0),
+    CONSTRAINT ux_tarif_pack UNIQUE (annee_scolaire_id, niveau_code)
+);
+```
+
 ### tarif_professeur
 
 Ce que le centre verse au professeur **par élève**, par matière et par niveau (§6).
@@ -174,10 +193,18 @@ CREATE TABLE eleve (
     annee_scolaire_id BIGINT       NOT NULL REFERENCES annee_scolaire(id),
     date_inscription  DATE         NOT NULL,
     statut            statut_eleve NOT NULL DEFAULT 'ACTIF',
+    -- Pack et réduction (D10, D11 — voir docs/adr/2026-08-29-pack-et-reduction.md) :
+    -- mutuellement exclusifs, jamais les deux en même temps.
+    est_pack                  BOOLEAN NOT NULL DEFAULT FALSE,
+    reduction_mensuelle_cents BIGINT,   -- NULL = pas de réduction, sinon montant fixe copié
     observation       TEXT,
     cree_par          BIGINT       NOT NULL REFERENCES utilisateur(id),
     cree_le           TIMESTAMPTZ  NOT NULL DEFAULT now(),
-    modifie_le        TIMESTAMPTZ  NOT NULL DEFAULT now()
+    modifie_le        TIMESTAMPTZ  NOT NULL DEFAULT now(),
+    CONSTRAINT ck_eleve_reduction_positive
+        CHECK (reduction_mensuelle_cents IS NULL OR reduction_mensuelle_cents >= 0),
+    CONSTRAINT ck_eleve_pack_reduction_exclusifs
+        CHECK (NOT (est_pack AND reduction_mensuelle_cents IS NOT NULL))
 );
 
 CREATE INDEX ix_eleve_niveau_annee ON eleve (annee_scolaire_id, niveau_code)
@@ -502,14 +529,18 @@ et (`date_fin IS NULL` OU `date_fin >= premier jour du mois`).
 
 Un élève `SUSPENDU` ou `ARCHIVE` ne génère pas d'échéance.
 
-> **Pack et montant personnalisé** (voir
-> `docs/adr/2026-08-29-pack-et-reduction.md`). Si `eleve.mode_facturation`
-> vaut `PACK` ou `PERSONNALISE`, `montant_du` n'est **pas** la somme
-> ci-dessus : c'est `eleve.montant_mensuel_fixe_cents`, un montant fixe copié
-> à l'engagement (même principe D1 que le tarif par matière). Les
-> `inscription_matiere` existent quand même normalement dans les deux cas —
+> **Réduction** (D11, voir `docs/adr/2026-08-29-pack-et-reduction.md`). Si
+> `eleve.reduction_mensuelle_cents` n'est pas NULL, `montant_du` n'est **pas**
+> la somme ci-dessus : c'est ce montant fixe, saisi une fois et inchangé
+> toute l'année. Les `inscription_matiere` existent quand même normalement —
 > seul le montant facturé à l'élève change, jamais le comptage utilisé pour
 > la paie professeur (§8.3, inchangée).
+>
+> **Pack** (D10, même ADR) n'a besoin d'aucune règle spéciale ici : le pack
+> désigne littéralement toutes les matières tarifées du niveau, chacune
+> inscrite avec le tarif du forfait fractionné (`eleve.est_pack = TRUE`).
+> La somme ci-dessus s'applique sans modification et retombe exactement sur
+> le forfait.
 
 ### 8.2 Statut d'une échéance
 

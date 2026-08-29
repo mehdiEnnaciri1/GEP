@@ -163,8 +163,8 @@ une notion de réduction sur l'échéance).
 
 > **Mise à jour 2026-08-29.** La notion de réduction évoquée ici est arrivée par un autre
 > chemin — pas un tarif préférentiel sur un règlement groupé, mais un montant mensuel fixe
-> par élève (`mode_facturation`). Voir `docs/adr/2026-08-29-pack-et-reduction.md`. La
-> question du règlement trimestriel/annuel elle-même reste ouverte.
+> par élève (`eleve.reduction_mensuelle_cents`), fixée en D11 ci-dessous. La question du
+> règlement trimestriel/annuel elle-même reste ouverte.
 
 ---
 
@@ -185,6 +185,47 @@ niveau (table `historique_niveau`) plutôt qu'une simple colonne.
 
 ---
 
+## D10 — Facturation au forfait (pack) *(FIXÉE)*
+
+**Ce que dit le CDC.** Rien — demande arrivée en cours de développement.
+
+**Le problème.** Un centre veut proposer un tarif préférentiel à un élève qui prend
+toutes les matières d'un niveau plutôt que de payer la somme des tarifs individuels.
+Une première implémentation avait traité le pack comme un montant fixe opaque, sans
+rapport avec les inscriptions réelles — au risque de fausser silencieusement la paie
+professeur si une règle spéciale y avait été ajoutée pour ce cas.
+
+**Décision retenue.** Le pack désigne **littéralement** toutes les matières tarifées
+du niveau : un élève en pack a une `inscription_matiere` réelle par matière, comptée
+normalement par chaque professeur. Le tarif de chaque inscription est le forfait pack
+fractionné à parts égales (reste en centimes sur la matière de plus petit id). Prix du
+forfait fixé par (année, niveau) dans `tarif_pack`, copié à l'engagement (principe D1).
+`eleve.est_pack BOOLEAN` marque le mode ; activer/désactiver le pack après coup clôture
+et recompose les inscriptions (voir `docs/adr/2026-08-29-pack-et-reduction.md`). Aucune
+règle spéciale côté paie professeur : le comptage par (matière, niveau) est inchangé.
+
+---
+
+## D11 — Montant mensuel personnalisé (réduction) *(FIXÉE)*
+
+**Ce que dit le CDC.** Rien — rejoint la question ouverte en D8 sur une notion de
+réduction sur l'échéance.
+
+**Le problème.** Un centre veut parfois facturer un élève un montant fixe, décidé au
+cas par cas (bourse, geste commercial, tarif de fratrie...), sans toucher aux matières
+suivies ni à la paie du professeur.
+
+**Décision retenue.** `eleve.reduction_mensuelle_cents` (NULL = pas de réduction) est un
+montant fixe saisi à la main à l'activation, inchangé pendant toute l'année scolaire,
+sans référence au référentiel de tarifs. L'élève garde ses inscriptions réelles
+(matières suivies, tarif normal copié) — seul le calcul de l'échéance mensuelle les
+ignore et facture ce montant à la place ; la paie professeur, basée sur les
+inscriptions, n'est pas affectée. Pack et réduction sont mutuellement exclusifs
+(contrainte `ck_eleve_pack_reduction_exclusifs`) — jamais les deux à la fois pour un
+même élève.
+
+---
+
 ## Récapitulatif
 
 | # | Sujet | Défaut retenu | Bloquante |
@@ -198,3 +239,5 @@ niveau (table `historique_niveau`) plutôt qu'une simple colonne.
 | D7 | Blocage frais d'inscription | Alerte, pas blocage | Non |
 | D8 | Paiement multi-mois | N enregistrements, reçu groupé | Non |
 | D9 | Changement de niveau | Colonne modifiable + audit | Non |
+| D10 | Facturation au forfait (pack) | Matières réelles, tarif fractionné | Oui (fixée) |
+| D11 | Montant personnalisé (réduction) | Montant fixe, inscriptions inchangées | Oui (fixée) |

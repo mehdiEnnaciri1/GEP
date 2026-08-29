@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { useNavigate } from 'react-router-dom'
 
@@ -11,10 +11,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreerEleve } from '@/features/eleves/hooks/useEleves'
-import type { ModeFacturation } from '@/features/eleves/types'
+import { useAnneesScolaires } from '@/features/referentiel/hooks/useAnneesScolaires'
 import { useMatieres } from '@/features/referentiel/hooks/useMatieres'
 import { useNiveaux } from '@/features/referentiel/hooks/useNiveaux'
-import { dirhamsVersCentimes } from '@/lib/money'
+import { useParametres } from '@/features/referentiel/hooks/useParametres'
+import { useTarifsPack } from '@/features/referentiel/hooks/useTarifs'
+import { centimesVersDirhams, dirhamsVersCentimes, formaterMontant } from '@/lib/money'
 
 const schema = z
   .object({
@@ -25,24 +27,21 @@ const schema = z
     date_inscription: z.string().min(1, 'Date requise'),
     observation: z.string().optional(),
     niveau_code: z.string().min(1, 'Niveau requis'),
-    mode_facturation: z.enum(['NORMAL', 'PACK', 'PERSONNALISE']),
-    montant_personnalise_dh: z.string().optional(),
+    est_pack: z.boolean(),
+    reduction_active: z.boolean(),
+    reduction_dh: z.string().optional(),
     matiere_ids: z.array(z.number()),
   })
   .superRefine((donnees, ctx) => {
-    if (donnees.mode_facturation !== 'PACK' && donnees.matiere_ids.length === 0) {
+    if (donnees.matiere_ids.length === 0) {
       ctx.addIssue({
         code: 'custom',
         path: ['matiere_ids'],
         message: 'Choisissez au moins une matière',
       })
     }
-    if (donnees.mode_facturation === 'PERSONNALISE' && !donnees.montant_personnalise_dh?.trim()) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['montant_personnalise_dh'],
-        message: 'Montant requis',
-      })
+    if (donnees.reduction_active && !donnees.reduction_dh?.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['reduction_dh'], message: 'Montant requis' })
     }
   })
 
@@ -52,7 +51,7 @@ const ETAPES = ['Identité', 'Niveau', 'Matières'] as const
 const CHAMPS_PAR_ETAPE: Record<number, (keyof Donnees)[]> = {
   0: ['nom', 'prenom', 'telephone_parent', 'date_inscription'],
   1: ['niveau_code'],
-  2: ['matiere_ids', 'mode_facturation', 'montant_personnalise_dh'],
+  2: ['matiere_ids', 'reduction_dh'],
 }
 
 export function PageCreationEleve() {
@@ -61,7 +60,12 @@ export function PageCreationEleve() {
   const [erreurMontant, setErreurMontant] = useState(false)
   const { data: niveaux } = useNiveaux()
   const { data: matieres } = useMatieres()
+  const { data: annees } = useAnneesScolaires()
+  const { data: parametres } = useParametres()
   const creation = useCreerEleve()
+
+  const anneeActiveId = annees?.find((a) => a.est_active)?.id
+  const { data: tarifsPack } = useTarifsPack(anneeActiveId)
 
   const {
     register,
@@ -72,11 +76,39 @@ export function PageCreationEleve() {
     formState: { errors },
   } = useForm<Donnees>({
     resolver: zodResolver(schema),
-    defaultValues: { matiere_ids: [], mode_facturation: 'NORMAL' },
+    defaultValues: { matiere_ids: [], est_pack: false, reduction_active: false },
   })
 
   const matiereIds = watch('matiere_ids')
-  const modeFacturation = watch('mode_facturation')
+  const estPack = watch('est_pack')
+  const reductionActive = watch('reduction_active')
+  const niveauCode = watch('niveau_code')
+
+  const matieresActives = matieres?.filter((m) => m.actif) ?? []
+  const tarifPackNiveau = tarifsPack?.find((t) => t.niveau_code === niveauCode)
+  const montantReductionDefaut = parametres?.find((p) => p.cle === 'tarif_reduction_defaut_cents')
+
+  // Pack coché : toutes les matières actives sont sélectionnées et grisées —
+  // pas de choix à faire, voir EleveService.creer (composé automatiquement
+  // depuis les tarifs du niveau).
+  useEffect(() => {
+    if (estPack) {
+      setValue(
+        'matiere_ids',
+        matieresActives.map((m) => m.id),
+        { shouldValidate: true },
+      )
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [estPack, matieres])
+
+  // Réduction cochée : préremplit avec le montant par défaut du référentiel.
+  useEffect(() => {
+    if (reductionActive && montantReductionDefaut) {
+      setValue('reduction_dh', String(centimesVersDirhams(Number(montantReductionDefaut.valeur))))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reductionActive])
 
   const suivant = async () => {
     const valide = await trigger(CHAMPS_PAR_ETAPE[etape])
@@ -87,10 +119,10 @@ export function PageCreationEleve() {
 
   const onSubmit = handleSubmit((donnees) => {
     setErreurMontant(false)
-    let montant_personnalise_cents: number | undefined
-    if (donnees.mode_facturation === 'PERSONNALISE') {
+    let reduction_mensuelle_cents: number | undefined
+    if (donnees.reduction_active) {
       try {
-        montant_personnalise_cents = dirhamsVersCentimes(donnees.montant_personnalise_dh ?? '')
+        reduction_mensuelle_cents = dirhamsVersCentimes(donnees.reduction_dh ?? '')
       } catch {
         setErreurMontant(true)
         return
@@ -106,9 +138,9 @@ export function PageCreationEleve() {
         niveau_code: donnees.niveau_code,
         date_inscription: donnees.date_inscription,
         observation: donnees.observation,
-        mode_facturation: donnees.mode_facturation,
-        montant_personnalise_cents,
-        matiere_ids: donnees.mode_facturation === 'PACK' ? [] : donnees.matiere_ids,
+        est_pack: donnees.est_pack,
+        reduction_mensuelle_cents,
+        matiere_ids: donnees.matiere_ids,
       },
       { onSuccess: (eleve) => navigate(`/eleves/${eleve.id}`) },
     )
@@ -123,10 +155,14 @@ export function PageCreationEleve() {
     )
   }
 
-  const basculerMode = (mode: Exclude<ModeFacturation, 'NORMAL'>) => {
-    setValue('mode_facturation', modeFacturation === mode ? 'NORMAL' : mode, {
-      shouldValidate: true,
-    })
+  const basculerPack = () => {
+    setValue('est_pack', !estPack, { shouldValidate: true })
+    if (!estPack) setValue('reduction_active', false)
+  }
+
+  const basculerReduction = () => {
+    setValue('reduction_active', !reductionActive, { shouldValidate: true })
+    if (!reductionActive) setValue('est_pack', false)
   }
 
   return (
@@ -206,64 +242,60 @@ export function PageCreationEleve() {
           <div className="space-y-4">
             <div className="space-y-2 rounded-lg border p-3">
               <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={modeFacturation === 'PACK'}
-                  onChange={() => basculerMode('PACK')}
-                />
+                <input type="checkbox" checked={estPack} onChange={basculerPack} />
                 Pack — toutes les matières du niveau
               </label>
+              {estPack && (
+                <p className="pl-6 text-xs text-muted-foreground">
+                  {tarifPackNiveau
+                    ? `Forfait pack pour ce niveau : ${formaterMontant(tarifPackNiveau.montant_cents)} / mois.`
+                    : "Aucun tarif pack défini pour ce niveau — définissez-le dans le référentiel avant de valider."}
+                </p>
+              )}
+
               <label className="flex items-center gap-2 text-sm font-medium">
-                <input
-                  type="checkbox"
-                  checked={modeFacturation === 'PERSONNALISE'}
-                  onChange={() => basculerMode('PERSONNALISE')}
-                />
+                <input type="checkbox" checked={reductionActive} onChange={basculerReduction} />
                 Réduction — montant mensuel personnalisé
               </label>
-              {modeFacturation === 'PERSONNALISE' && (
-                <div className="space-y-1 pt-1">
-                  <Label htmlFor="montant_personnalise_dh">Montant mensuel fixe (DH)</Label>
+              {reductionActive && (
+                <div className="space-y-1 pt-1 pl-6">
+                  <Label htmlFor="reduction_dh">Montant mensuel fixe (DH)</Label>
                   <Input
-                    id="montant_personnalise_dh"
+                    id="reduction_dh"
                     inputMode="decimal"
                     className="w-32"
-                    {...register('montant_personnalise_dh')}
+                    {...register('reduction_dh')}
                   />
-                  {errors.montant_personnalise_dh && (
-                    <p className="text-xs text-destructive">
-                      {errors.montant_personnalise_dh.message}
-                    </p>
+                  {errors.reduction_dh && (
+                    <p className="text-xs text-destructive">{errors.reduction_dh.message}</p>
                   )}
                   {erreurMontant && <p className="text-xs text-destructive">Montant invalide.</p>}
                 </div>
               )}
+
+              <p className="pt-1 text-xs text-muted-foreground">
+                La réduction remplace le calcul par matière et reste fixe toute l'année. Les
+                matières cochées ci-dessous servent à savoir dans quels cours l'élève est
+                présent — elles restent utilisées pour la paie des professeurs.
+              </p>
             </div>
 
-            {modeFacturation === 'PACK' ? (
-              <p className="text-sm text-muted-foreground">
-                Toutes les matières tarifées pour ce niveau seront inscrites automatiquement, au
-                tarif forfaitaire pack — pas besoin de les choisir une par une.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {matieres
-                  ?.filter((m) => m.actif)
-                  .map((matiere) => (
-                    <label key={matiere.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={matiereIds?.includes(matiere.id) ?? false}
-                        onChange={() => basculerMatiere(matiere.id)}
-                      />
-                      {matiere.libelle}
-                    </label>
-                  ))}
-                {errors.matiere_ids && (
-                  <p className="text-xs text-destructive">{errors.matiere_ids.message}</p>
-                )}
-              </div>
-            )}
+            <div className="space-y-2">
+              {matieresActives.map((matiere) => (
+                <label key={matiere.id} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={matiereIds?.includes(matiere.id) ?? false}
+                    disabled={estPack}
+                    onChange={() => basculerMatiere(matiere.id)}
+                  />
+                  {matiere.libelle}
+                </label>
+              ))}
+              {errors.matiere_ids && (
+                <p className="text-xs text-destructive">{errors.matiere_ids.message}</p>
+              )}
+            </div>
           </div>
         )}
 
