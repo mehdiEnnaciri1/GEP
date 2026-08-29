@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api, ErreurApi } from '@/api/client'
-import type { CategorieCharge, Charge, TotauxCharges } from '@/features/charges/types'
+import type {
+  CategorieCharge,
+  Charge,
+  EvolutionCharges,
+  TotauxCharges,
+} from '@/features/charges/types'
 import { useSessionStore } from '@/stores/session'
 
 const CLE_CATEGORIES = ['charges', 'categories']
@@ -53,6 +58,15 @@ export function useTotauxCharges(periode: string | undefined) {
     queryKey: ['charges', 'totaux', periode],
     queryFn: () => api<TotauxCharges>(`/charges/totaux?periode=${periode}`),
     enabled: periode !== undefined,
+  })
+}
+
+export function useEvolutionCharges() {
+  // Graphe fixe, indépendant du filtre de période de la page — une seule
+  // requête, jamais reliée à `periodeFiltre`.
+  return useQuery({
+    queryKey: ['charges', 'evolution-mensuelle'],
+    queryFn: () => api<EvolutionCharges>('/charges/evolution-mensuelle'),
   })
 }
 

@@ -19,6 +19,7 @@ from app.modules.charges.schemas import (
     CategorieChargeMiseAJour,
     CategorieChargePublique,
     ChargePublique,
+    EvolutionChargesReponse,
     TotalCategorie,
     TotauxCharges,
 )
@@ -85,6 +86,14 @@ async def obtenir_totaux(
             for categorie_id, total_cents in par_categorie
         ],
     )
+
+
+@router.get("/evolution-mensuelle", response_model=EvolutionChargesReponse)
+async def obtenir_evolution_mensuelle(
+    session: AsyncSession = Depends(get_session),
+    _utilisateur: Utilisateur = Depends(_ADMIN_SEUL),
+) -> EvolutionChargesReponse:
+    return await ChargeService(session).evolution_mensuelle()
 
 
 # ---- Charges -------------------------------------------------------------------

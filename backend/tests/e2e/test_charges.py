@@ -9,6 +9,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import RoleUtilisateur
+from tests.factories.referentiel import creer_annee_scolaire
 from tests.factories.utilisateur import MOT_DE_PASSE_TEST, construire_utilisateur
 
 PERIODE = "2025-10"
@@ -232,6 +233,79 @@ class TestListeEtTotaux:
             headers={"Authorization": f"Bearer {jeton}"},
         )
         assert rep.status_code == 403
+
+
+class TestEvolutionMensuelle:
+    async def test_totaux_ordonnes_de_septembre_a_aout(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        await creer_annee_scolaire(session)  # 2025-2026, 2025-09-01 -> 2026-06-30
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin9@test.ma")
+        headers = {"Authorization": f"Bearer {jeton}"}
+        categorie_id = (
+            await client.post("/api/charges/categories", json={"libelle": "Loyer"}, headers=headers)
+        ).json()["id"]
+
+        await client.post(
+            "/api/charges",
+            data=_donnees_charge(categorie_id, montant_cents=100000, periode="2025-09"),
+            headers=headers,
+        )
+        await client.post(
+            "/api/charges",
+            data=_donnees_charge(categorie_id, montant_cents=50000, periode="2026-01"),
+            headers=headers,
+        )
+        # Une charge ANNULÉE ne doit pas compter dans l'évolution.
+        annulee = await client.post(
+            "/api/charges",
+            data=_donnees_charge(categorie_id, montant_cents=999999, periode="2025-10"),
+            headers=headers,
+        )
+        await client.post(f"/api/charges/{annulee.json()['id']}/annuler", headers=headers)
+
+        rep = await client.get("/api/charges/evolution-mensuelle", headers=headers)
+        assert rep.status_code == 200
+        corps = rep.json()
+        assert corps["annee_scolaire"] == "2025-2026"
+
+        mois_ordonnes = [p["mois"] for p in corps["points"]]
+        assert mois_ordonnes == [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
+
+        totaux_par_mois = {p["mois"]: p["total_cents"] for p in corps["points"]}
+        attendu = {
+            9: 100000,
+            10: 0,
+            11: 0,
+            12: 0,
+            1: 50000,
+            2: 0,
+            3: 0,
+            4: 0,
+            5: 0,
+            6: 0,
+            7: 0,
+            8: 0,
+        }
+        assert totaux_par_mois == attendu
+
+    async def test_caissier_ne_peut_pas_consulter(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        jeton = await _jeton(
+            client, session, role=RoleUtilisateur.CAISSIER, email="caissier4@test.ma"
+        )
+        rep = await client.get(
+            "/api/charges/evolution-mensuelle", headers={"Authorization": f"Bearer {jeton}"}
+        )
+        assert rep.status_code == 403
+
+    async def test_refuse_sans_annee_active(self, client: AsyncClient, session: AsyncSession):
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin10@test.ma")
+        rep = await client.get(
+            "/api/charges/evolution-mensuelle", headers={"Authorization": f"Bearer {jeton}"}
+        )
+        assert rep.status_code == 422
 
 
 class TestAnnulation:

@@ -27,3 +27,13 @@ export interface TotauxCharges {
   total_cents: number
   par_categorie: TotalCategorie[]
 }
+
+export interface PointChargeMensuel {
+  mois: number
+  total_cents: number
+}
+
+export interface EvolutionCharges {
+  annee_scolaire: string
+  points: PointChargeMensuel[]
+}

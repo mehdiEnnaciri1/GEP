@@ -9,13 +9,14 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApercuJustificatif } from '@/features/charges/components/ApercuJustificatif'
-import { GraphiqueChargesParCategorie } from '@/features/charges/components/GraphiqueChargesParCategorie'
+import { GraphiqueChargesParMois } from '@/features/charges/components/GraphiqueChargesParMois'
 import {
   useAnnulerCharge,
   useCategoriesCharge,
   useCharges,
   useCreerCategorieCharge,
   useCreerCharge,
+  useEvolutionCharges,
   useTotauxCharges,
 } from '@/features/charges/hooks/useCharges'
 import { dirhamsVersCentimes, formaterMontant } from '@/lib/money'
@@ -52,7 +53,8 @@ export function PageCharges() {
     periode: periodeFiltre || undefined,
     categorie_id: categorieFiltre,
   })
-  const { data: totaux, isLoading: totauxEnCours } = useTotauxCharges(periodeFiltre || undefined)
+  const { data: totaux } = useTotauxCharges(periodeFiltre || undefined)
+  const evolution = useEvolutionCharges()
   const creation = useCreerCharge()
   const creationCategorie = useCreerCategorieCharge()
   const annulation = useAnnulerCharge()
@@ -250,14 +252,7 @@ export function PageCharges() {
         )}
       </div>
 
-      {periodeFiltre && (
-        <GraphiqueChargesParCategorie
-          totaux={totaux}
-          categories={categories}
-          periode={periodeFiltre}
-          isLoading={totauxEnCours}
-        />
-      )}
+      <GraphiqueChargesParMois evolution={evolution.data} isLoading={evolution.isLoading} />
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>

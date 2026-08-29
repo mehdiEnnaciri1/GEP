@@ -8,16 +8,23 @@ from datetime import UTC, date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflitMetier, RessourceIntrouvable
+from app.core.exceptions import ConflitMetier, RessourceIntrouvable, ValidationMetier
 from app.modules.audit.service import journaliser
 from app.modules.charges.models import CategorieCharge, Charge
 from app.modules.charges.repository import CategorieChargeRepository, ChargeRepository
 from app.modules.charges.schemas import (
     CategorieChargeCreation,
     CategorieChargeMiseAJour,
+    EvolutionChargesReponse,
+    PointChargeMensuel,
 )
 from app.modules.paiements.models import ModePaiement
+from app.modules.referentiel.repository import AnneeScolaireRepository
 from app.shared import stockage
+
+# Une année scolaire commence toujours en septembre (même convention que le
+# graphe d'évolution des effectifs du dashboard) — 9,10,11,12 puis 1..8.
+_MOIS_ANNEE_SCOLAIRE = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
 
 
 class CategorieChargeService:
@@ -55,6 +62,7 @@ class ChargeService:
         self._session = session
         self._charges = ChargeRepository(session)
         self._categories = CategorieChargeRepository(session)
+        self._annees = AnneeScolaireRepository(session)
 
     async def creer(
         self,
@@ -127,6 +135,26 @@ class ChargeService:
         total = await self._charges.total_periode(periode)
         par_categorie = await self._charges.total_par_categorie(periode)
         return total, par_categorie
+
+    async def evolution_mensuelle(self) -> EvolutionChargesReponse:
+        annee_active = next((a for a in await self._annees.lister() if a.est_active), None)
+        if annee_active is None:
+            raise ValidationMetier(
+                "Aucune année scolaire active — le graphe des charges n'a rien à afficher."
+            )
+
+        annee_debut = int(annee_active.libelle.split("-")[0])
+        periodes = []
+        for mois in _MOIS_ANNEE_SCOLAIRE:
+            annee_civile = annee_debut if mois >= 9 else annee_debut + 1
+            periodes.append(f"{annee_civile:04d}-{mois:02d}")
+
+        totaux_par_periode = await self._charges.total_par_periodes(periodes)
+        points = [
+            PointChargeMensuel(mois=mois, total_cents=totaux_par_periode.get(periode, 0))
+            for mois, periode in zip(_MOIS_ANNEE_SCOLAIRE, periodes, strict=True)
+        ]
+        return EvolutionChargesReponse(annee_scolaire=annee_active.libelle, points=points)
 
     async def annuler(self, charge_id: int, utilisateur_id: int, adresse_ip: str | None) -> Charge:
         charge = await self.obtenir(charge_id)

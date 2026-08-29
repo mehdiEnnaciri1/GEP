@@ -70,3 +70,13 @@ class ChargeRepository:
             .group_by(Charge.categorie_id)
         )
         return [(categorie_id, int(total)) for categorie_id, total in resultat.all()]
+
+    async def total_par_periodes(self, periodes: list[str]) -> dict[str, int]:
+        """Retourne {periode: total_cents} pour les périodes demandées —
+        sert le graphe d'évolution mensuelle des charges."""
+        resultat = await self._session.execute(
+            select(Charge.periode, func.sum(Charge.montant_cents))
+            .where(Charge.periode.in_(periodes), Charge.annule_le.is_(None))
+            .group_by(Charge.periode)
+        )
+        return {periode: int(total) for periode, total in resultat.all()}

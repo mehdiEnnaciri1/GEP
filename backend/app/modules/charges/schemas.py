@@ -50,3 +50,18 @@ class TotauxCharges(BaseModel):
     periode: str
     total_cents: int
     par_categorie: list[TotalCategorie]
+
+
+class PointChargeMensuel(BaseModel):
+    mois: int
+    total_cents: int
+
+
+class EvolutionChargesReponse(BaseModel):
+    """Graphe fixe — total des charges par mois, indépendant du filtre de
+    période de la page. `points` va toujours de septembre à août (année
+    scolaire active), 12 éléments, `mois` porte le numéro de mois
+    calendaire (1-12)."""
+
+    annee_scolaire: str
+    points: list[PointChargeMensuel]
