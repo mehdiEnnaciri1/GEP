@@ -236,7 +236,7 @@ class TestListeEtTotaux:
 
 
 class TestEvolutionMensuelle:
-    async def test_totaux_ordonnes_de_septembre_a_aout(
+    async def test_totaux_ordonnes_daout_a_juillet(
         self, client: AsyncClient, session: AsyncSession
     ):
         await creer_annee_scolaire(session)  # 2025-2026, 2025-09-01 -> 2026-06-30
@@ -246,6 +246,11 @@ class TestEvolutionMensuelle:
             await client.post("/api/charges/categories", json={"libelle": "Loyer"}, headers=headers)
         ).json()["id"]
 
+        await client.post(
+            "/api/charges",
+            data=_donnees_charge(categorie_id, montant_cents=20000, periode="2025-08"),
+            headers=headers,
+        )
         await client.post(
             "/api/charges",
             data=_donnees_charge(categorie_id, montant_cents=100000, periode="2025-09"),
@@ -270,10 +275,11 @@ class TestEvolutionMensuelle:
         assert corps["annee_scolaire"] == "2025-2026"
 
         mois_ordonnes = [p["mois"] for p in corps["points"]]
-        assert mois_ordonnes == [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
+        assert mois_ordonnes == [8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7]
 
         totaux_par_mois = {p["mois"]: p["total_cents"] for p in corps["points"]}
         attendu = {
+            8: 20000,
             9: 100000,
             10: 0,
             11: 0,
@@ -285,7 +291,6 @@ class TestEvolutionMensuelle:
             5: 0,
             6: 0,
             7: 0,
-            8: 0,
         }
         assert totaux_par_mois == attendu
 

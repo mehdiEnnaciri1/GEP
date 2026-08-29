@@ -13,9 +13,9 @@ import { Skeleton } from '@/components/ui/skeleton'
 import type { EvolutionCharges } from '@/features/charges/types'
 import { centimesVersDirhams, formaterMontant } from '@/lib/money'
 
-// Une année scolaire va toujours de septembre à août (voir service backend) —
+// Une année scolaire va toujours d'août à juillet (voir service backend) —
 // l'ordre des points reçus suit déjà cette convention.
-const LIBELLES_MOIS = ['Sept', 'Oct', 'Nov', 'Déc', 'Janv', 'Févr', 'Mars', 'Avr', 'Mai', 'Juin', 'Juil', 'Août']
+const LIBELLES_MOIS = ['Août', 'Sept', 'Oct', 'Nov', 'Déc', 'Janv', 'Févr', 'Mars', 'Avr', 'Mai', 'Juin', 'Juil']
 
 interface LigneGraphe {
   mois: string

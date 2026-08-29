@@ -15,10 +15,10 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { EvolutionAnnee } from '@/features/dashboard/types'
 
-// Une année scolaire va toujours de septembre à août (voir service backend) —
+// Une année scolaire va toujours d'août à juillet (voir service backend) —
 // l'ordre des points reçus suit déjà cette convention, seul le libellé
 // affiché sur l'axe X est dérivé ici.
-const LIBELLES_MOIS = ['Sept', 'Oct', 'Nov', 'Déc', 'Janv', 'Févr', 'Mars', 'Avr', 'Mai', 'Juin', 'Juil', 'Août']
+const LIBELLES_MOIS = ['Août', 'Sept', 'Oct', 'Nov', 'Déc', 'Janv', 'Févr', 'Mars', 'Avr', 'Mai', 'Juin', 'Juil']
 
 const COULEURS = [
   'var(--chart-1)',

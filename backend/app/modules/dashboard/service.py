@@ -25,10 +25,10 @@ from app.modules.dashboard.schemas import (
 from app.modules.referentiel.models import AnneeScolaire
 from app.modules.referentiel.repository import AnneeScolaireRepository
 
-# Une année scolaire commence toujours en septembre (convention du graphe
+# Une année scolaire commence toujours en août (convention du graphe
 # d'évolution des effectifs, indépendante de date_debut/date_fin réels de
-# l'année, qui peuvent varier légèrement) — 9,10,11,12 puis 1..8.
-_MOIS_ANNEE_SCOLAIRE = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
+# l'année, qui peuvent varier légèrement) — 8,9,10,11,12 puis 1..7.
+_MOIS_ANNEE_SCOLAIRE = [8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7]
 
 
 class DashboardService:
@@ -95,7 +95,7 @@ class DashboardService:
             annee_debut = int(annee.libelle.split("-")[0])
             points = []
             for mois in _MOIS_ANNEE_SCOLAIRE:
-                annee_civile = annee_debut if mois >= 9 else annee_debut + 1
+                annee_civile = annee_debut if mois >= 8 else annee_debut + 1
                 periode = f"{annee_civile:04d}-{mois:02d}"
                 nb = await self._dashboard.compter_eleves_actifs_periode(annee.id, periode)
                 points.append(PointEffectif(mois=mois, nb=nb))

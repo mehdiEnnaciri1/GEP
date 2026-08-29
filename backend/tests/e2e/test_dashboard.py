@@ -330,17 +330,20 @@ class TestEvolutionEffectifs:
     """Jeu de données connu, un mois de coupure et un statut par cas — voir
     §8 de docs/02-modele-donnees.md pour la règle de comptage.
 
-    Année scolaire 2025-2026 (septembre 2025 → août 2026) :
-    - A, ACTIF, inscrit du 2025-09-01 sans fin -> compte tous les mois (12/12)
+    Année scolaire 2025-2026 (août 2025 → juillet 2026) :
+    - F, ACTIF, inscrit du 2025-08-01 au 2025-08-31 seulement -> compte en
+      août uniquement, plus du tout dès septembre
+    - A, ACTIF, inscrit du 2025-09-01 sans fin -> compte de septembre à
+      juillet (pas en août, l'inscription n'existait pas encore)
     - B, ACTIF, inscrit du 2025-09-01 au 2025-11-30 -> compte sept/oct/nov,
       plus du tout à partir de décembre
-    - C, SUSPENDU, inscrit du 2025-09-01 sans fin -> compte quand même tous
-      les mois (SUSPENDU n'exclut pas, seul ARCHIVE exclut)
+    - C, SUSPENDU, inscrit du 2025-09-01 sans fin -> compte quand même comme
+      A (SUSPENDU n'exclut pas, seul ARCHIVE exclut)
     - D, ARCHIVE, inscrit du 2025-09-01 sans fin -> ne compte JAMAIS
     - E, ACTIF, inscrit à partir du 2026-01-15 -> ne compte qu'à partir de
-      janvier 2026 (pas avant, l'inscription n'existait pas encore)
+      janvier 2026
 
-    nb attendu par mois : sept=3, oct=3, nov=3, dec=2, puis jan..août=3.
+    nb attendu par mois : août=1, sept=3, oct=3, nov=3, dec=2, puis jan..juil=3.
     """
 
     async def test_comptage_mensuel_sur_un_jeu_connu(
@@ -366,12 +369,13 @@ class TestEvolutionEffectifs:
                 cree_par=utilisateur_id,
             )
 
+        eleve_f = _eleve("EFF-F", StatutEleve.ACTIF)
         eleve_a = _eleve("EFF-A", StatutEleve.ACTIF)
         eleve_b = _eleve("EFF-B", StatutEleve.ACTIF)
         eleve_c = _eleve("EFF-C", StatutEleve.SUSPENDU)
         eleve_d = _eleve("EFF-D", StatutEleve.ARCHIVE)
         eleve_e = _eleve("EFF-E", StatutEleve.ACTIF)
-        session.add_all([eleve_a, eleve_b, eleve_c, eleve_d, eleve_e])
+        session.add_all([eleve_f, eleve_a, eleve_b, eleve_c, eleve_d, eleve_e])
         await session.flush()
 
         def _inscription(
@@ -388,6 +392,7 @@ class TestEvolutionEffectifs:
 
         session.add_all(
             [
+                _inscription(eleve_f.id, date(2025, 8, 1), date(2025, 8, 31)),
                 _inscription(eleve_a.id, date(2025, 9, 1), None),
                 _inscription(eleve_b.id, date(2025, 9, 1), date(2025, 11, 30)),
                 _inscription(eleve_c.id, date(2025, 9, 1), None),
@@ -407,10 +412,10 @@ class TestEvolutionEffectifs:
 
         points = annees[0]["points"]
         mois_ordonnes = [p["mois"] for p in points]
-        assert mois_ordonnes == [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
+        assert mois_ordonnes == [8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7]
 
         nb_par_mois = {p["mois"]: p["nb"] for p in points}
-        attendu = {9: 3, 10: 3, 11: 3, 12: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 3, 6: 3, 7: 3, 8: 3}
+        attendu = {8: 1, 9: 3, 10: 3, 11: 3, 12: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 3, 6: 3, 7: 3}
         assert nb_par_mois == attendu
 
     async def test_caissier_peut_consulter_professeur_non(

@@ -47,7 +47,7 @@ class EvolutionAnnee(BaseModel):
 
 class EvolutionEffectifsReponse(BaseModel):
     """Graphe fixe du dashboard — une ligne par année scolaire, indépendant du
-    filtre de période mensuel. `points` va toujours de septembre à août,
+    filtre de période mensuel. `points` va toujours d'août à juillet,
     12 éléments, `mois` porte le numéro de mois calendaire (1-12)."""
 
     annees: list[EvolutionAnnee]

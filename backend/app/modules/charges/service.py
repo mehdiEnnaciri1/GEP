@@ -22,9 +22,9 @@ from app.modules.paiements.models import ModePaiement
 from app.modules.referentiel.repository import AnneeScolaireRepository
 from app.shared import stockage
 
-# Une année scolaire commence toujours en septembre (même convention que le
-# graphe d'évolution des effectifs du dashboard) — 9,10,11,12 puis 1..8.
-_MOIS_ANNEE_SCOLAIRE = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
+# Une année scolaire commence toujours en août (même convention que le
+# graphe d'évolution des effectifs du dashboard) — 8,9,10,11,12 puis 1..7.
+_MOIS_ANNEE_SCOLAIRE = [8, 9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7]
 
 
 class CategorieChargeService:
@@ -146,7 +146,7 @@ class ChargeService:
         annee_debut = int(annee_active.libelle.split("-")[0])
         periodes = []
         for mois in _MOIS_ANNEE_SCOLAIRE:
-            annee_civile = annee_debut if mois >= 9 else annee_debut + 1
+            annee_civile = annee_debut if mois >= 8 else annee_debut + 1
             periodes.append(f"{annee_civile:04d}-{mois:02d}")
 
         totaux_par_periode = await self._charges.total_par_periodes(periodes)

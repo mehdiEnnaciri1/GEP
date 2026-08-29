@@ -59,7 +59,7 @@ class PointChargeMensuel(BaseModel):
 
 class EvolutionChargesReponse(BaseModel):
     """Graphe fixe — total des charges par mois, indépendant du filtre de
-    période de la page. `points` va toujours de septembre à août (année
+    période de la page. `points` va toujours d'août à juillet (année
     scolaire active), 12 éléments, `mois` porte le numéro de mois
     calendaire (1-12)."""
 
