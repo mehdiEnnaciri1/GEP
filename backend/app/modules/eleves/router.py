@@ -13,9 +13,11 @@ from app.core.exceptions import RessourceIntrouvable
 from app.core.permissions import exige_role
 from app.db.session import get_session
 from app.modules.auth.models import RoleUtilisateur, Utilisateur
-from app.modules.eleves.models import StatutEleve
+from app.modules.eleves.models import Eleve, FraisInscription, InscriptionMatiere, StatutEleve
 from app.modules.eleves.schemas import (
     ChangementStatut,
+    DefinirPack,
+    DefinirReduction,
     EleveCreation,
     EleveDetail,
     EleveMiseAJour,
@@ -33,6 +35,18 @@ _ACCES = exige_role(RoleUtilisateur.ADMIN, RoleUtilisateur.CAISSIER)
 
 def _adresse_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
+
+
+def _detail(
+    eleve: Eleve, inscriptions: list[InscriptionMatiere], frais: FraisInscription | None
+) -> EleveDetail:
+    if frais is None:  # pragma: no cover — toujours créé à la création de l'élève
+        raise RessourceIntrouvable("Frais d'inscription introuvable.")
+    return EleveDetail(
+        **ElevePublique.model_validate(eleve).model_dump(),
+        inscriptions=[InscriptionMatierePublique.model_validate(i) for i in inscriptions],
+        frais_inscription=FraisInscriptionPublique.model_validate(frais),
+    )
 
 
 @router.get("", response_model=PageEleves)
@@ -66,13 +80,7 @@ async def creer_eleve(
     eleve, inscriptions, frais = await EleveService(session).creer(
         donnees, utilisateur.id, _adresse_ip(request)
     )
-    if frais is None:  # pragma: no cover — toujours créé par le service
-        raise RessourceIntrouvable("Frais d'inscription introuvable.")
-    return EleveDetail(
-        **ElevePublique.model_validate(eleve).model_dump(),
-        inscriptions=[InscriptionMatierePublique.model_validate(i) for i in inscriptions],
-        frais_inscription=FraisInscriptionPublique.model_validate(frais),
-    )
+    return _detail(eleve, inscriptions, frais)
 
 
 @router.get("/{eleve_id}", response_model=EleveDetail)
@@ -82,13 +90,7 @@ async def obtenir_eleve(
     _utilisateur: Utilisateur = Depends(_ACCES),
 ) -> EleveDetail:
     eleve, inscriptions, frais = await EleveService(session).obtenir_detail(eleve_id)
-    if frais is None:  # pragma: no cover — toujours créé à la création de l'élève
-        raise RessourceIntrouvable("Frais d'inscription introuvable.")
-    return EleveDetail(
-        **ElevePublique.model_validate(eleve).model_dump(),
-        inscriptions=[InscriptionMatierePublique.model_validate(i) for i in inscriptions],
-        frais_inscription=FraisInscriptionPublique.model_validate(frais),
-    )
+    return _detail(eleve, inscriptions, frais)
 
 
 @router.patch("/{eleve_id}", response_model=ElevePublique)
@@ -115,5 +117,33 @@ async def changer_statut_eleve(
 ) -> ElevePublique:
     eleve = await EleveService(session).changer_statut(
         eleve_id, donnees.statut, utilisateur.id, _adresse_ip(request)
+    )
+    return ElevePublique.model_validate(eleve)
+
+
+@router.post("/{eleve_id}/pack", response_model=EleveDetail)
+async def definir_pack_eleve(
+    eleve_id: int,
+    donnees: DefinirPack,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    utilisateur: Utilisateur = Depends(_ACCES),
+) -> EleveDetail:
+    eleve, inscriptions, frais = await EleveService(session).definir_pack(
+        eleve_id, donnees, utilisateur.id, _adresse_ip(request)
+    )
+    return _detail(eleve, inscriptions, frais)
+
+
+@router.post("/{eleve_id}/reduction", response_model=ElevePublique)
+async def definir_reduction_eleve(
+    eleve_id: int,
+    donnees: DefinirReduction,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+    utilisateur: Utilisateur = Depends(_ACCES),
+) -> ElevePublique:
+    eleve = await EleveService(session).definir_reduction(
+        eleve_id, donnees, utilisateur.id, _adresse_ip(request)
     )
     return ElevePublique.model_validate(eleve)

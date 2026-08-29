@@ -555,6 +555,184 @@ class TestGenerationPaie:
         paies = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()
         assert paies[0]["total_cents"] == 0
 
+    async def test_eleve_pack_compte_dans_chaque_matiere_du_niveau(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """Test obligatoire : le pack désigne littéralement toutes les
+        matières du niveau — un élève pack a une inscription réelle par
+        matière, donc compte normalement dans CHAQUE affectation de ce
+        niveau, sans règle spéciale côté paie (voir
+        docs/adr/2026-08-29-pack-et-reduction.md)."""
+        jeton, utilisateur_id = await _jeton_admin(client, session, email="pack_paie1@test.ma")
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        annee = await creer_annee_scolaire(session)
+        niveau = await creer_niveau(session, code="2BAC", ordre=6)
+        matiere_maths = await creer_matiere(session, code="MATH", libelle="Maths")
+        matiere_physique = await creer_matiere(session, code="PHYSIQUE", libelle="Physique")
+        professeur = await creer_professeur(session)
+
+        await creer_tarif_professeur(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_maths.id,
+            montant_par_eleve_cents=3000,
+        )
+        await creer_tarif_professeur(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_physique.id,
+            montant_par_eleve_cents=2000,
+        )
+        await creer_affectation(
+            session,
+            professeur_id=professeur.id,
+            matiere_id=matiere_maths.id,
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+        )
+        await creer_affectation(
+            session,
+            professeur_id=professeur.id,
+            matiere_id=matiere_physique.id,
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+        )
+
+        eleve = Eleve(
+            matricule="PACK-1",
+            nom="Eleve",
+            prenom="Pack",
+            telephone_parent="0600000000",
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+            date_inscription=date(2025, 9, 1),
+            statut=StatutEleve.ACTIF,
+            est_pack=True,
+            cree_par=utilisateur_id,
+        )
+        session.add(eleve)
+        await session.flush()
+        session.add_all(
+            [
+                InscriptionMatiere(
+                    eleve_id=eleve.id,
+                    matiere_id=matiere_maths.id,
+                    tarif_mensuel_cents=22500,
+                    date_debut=date(2025, 9, 1),
+                    cree_par=utilisateur_id,
+                ),
+                InscriptionMatiere(
+                    eleve_id=eleve.id,
+                    matiere_id=matiere_physique.id,
+                    tarif_mensuel_cents=22500,
+                    date_debut=date(2025, 9, 1),
+                    cree_par=utilisateur_id,
+                ),
+            ]
+        )
+        await session.commit()
+
+        rep = await client.post("/api/paie/generer", json={"periode": PERIODE}, headers=headers)
+        assert rep.status_code == 200
+
+        paies = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()
+        paie_id = paies[0]["id"]
+        detail = await client.get(f"/api/paie/{paie_id}", headers=headers)
+        lignes = {
+            (ligne["niveau_code"], ligne["matiere_id"]): ligne for ligne in detail.json()["lignes"]
+        }
+        assert lignes[(niveau.code, matiere_maths.id)]["nombre_eleves"] == 1
+        assert lignes[(niveau.code, matiere_physique.id)]["nombre_eleves"] == 1
+
+    async def test_deux_eleves_pack_et_individuel_comptent_ensemble(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """Test obligatoire : deux élèves sur (Maths, 1BAC), un pack et un
+        individuel — nombre_eleves = 2, montant = 2 × tarif_prof."""
+        jeton, utilisateur_id = await _jeton_admin(client, session, email="pack_paie2@test.ma")
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        annee = await creer_annee_scolaire(session)
+        niveau = await creer_niveau(session, code="1BAC", ordre=5)
+        matiere_maths = await creer_matiere(session, code="MATH", libelle="Maths")
+        matiere_svt = await creer_matiere(session, code="SVT", libelle="SVT")
+        professeur = await creer_professeur(session)
+
+        await creer_tarif_professeur(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_maths.id,
+            montant_par_eleve_cents=3000,
+        )
+        await creer_affectation(
+            session,
+            professeur_id=professeur.id,
+            matiere_id=matiere_maths.id,
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+        )
+
+        await _creer_eleve(
+            session,
+            utilisateur_id=utilisateur_id,
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+            matiere_id=matiere_maths.id,
+            matricule="IND-1",
+        )
+
+        eleve_pack = Eleve(
+            matricule="PACK-2",
+            nom="Eleve",
+            prenom="Pack",
+            telephone_parent="0600000000",
+            niveau_code=niveau.code,
+            annee_scolaire_id=annee.id,
+            date_inscription=date(2025, 9, 1),
+            statut=StatutEleve.ACTIF,
+            est_pack=True,
+            cree_par=utilisateur_id,
+        )
+        session.add(eleve_pack)
+        await session.flush()
+        session.add_all(
+            [
+                InscriptionMatiere(
+                    eleve_id=eleve_pack.id,
+                    matiere_id=matiere_maths.id,
+                    tarif_mensuel_cents=22500,
+                    date_debut=date(2025, 9, 1),
+                    cree_par=utilisateur_id,
+                ),
+                InscriptionMatiere(
+                    eleve_id=eleve_pack.id,
+                    matiere_id=matiere_svt.id,
+                    tarif_mensuel_cents=22500,
+                    date_debut=date(2025, 9, 1),
+                    cree_par=utilisateur_id,
+                ),
+            ]
+        )
+        await session.commit()
+
+        rep = await client.post("/api/paie/generer", json={"periode": PERIODE}, headers=headers)
+        assert rep.status_code == 200
+
+        paies = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()
+        paie_id = paies[0]["id"]
+        detail = await client.get(f"/api/paie/{paie_id}", headers=headers)
+        ligne = next(
+            ligne
+            for ligne in detail.json()["lignes"]
+            if ligne["niveau_code"] == niveau.code and ligne["matiere_id"] == matiere_maths.id
+        )
+        assert ligne["nombre_eleves"] == 2
+        assert ligne["montant_cents"] == 6000
+
     async def test_caissier_ne_peut_pas_generer(self, client: AsyncClient, session: AsyncSession):
         jeton = await _jeton(
             client, session, role=RoleUtilisateur.CAISSIER, email="caissier1@test.ma"

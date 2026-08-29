@@ -7,6 +7,7 @@ from datetime import date, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     Date,
     DateTime,
@@ -29,23 +30,19 @@ class StatutEleve(enum.StrEnum):
     ARCHIVE = "ARCHIVE"
 
 
-class ModeFacturation(enum.StrEnum):
-    """NORMAL : montant dû = somme des tarifs des matières inscrites (§8.1).
-    PACK : forfait fixe couvrant toutes les matières tarifées du niveau
-    (copié depuis `tarif_pack` à l'engagement, même principe que D1). Un
-    élève PACK a quand même une `inscription_matiere` par matière — la paie
-    des professeurs (comptage par matière/niveau) n'est pas affectée.
-    PERSONNALISE : montant fixe saisi à la main par l'admin/caissier, pour
-    toute l'année scolaire. Dans les deux cas non-NORMAL, le montant vient
-    de `eleve.montant_mensuel_fixe_cents`, jamais de la somme des
-    inscriptions."""
-
-    NORMAL = "NORMAL"
-    PACK = "PACK"
-    PERSONNALISE = "PERSONNALISE"
-
-
 class Eleve(Base):
+    """`est_pack` et `reduction_mensuelle_cents` — voir
+    docs/adr/2026-08-29-pack-et-reduction.md. Le pack désigne LITTÉRALEMENT
+    toutes les matières tarifées du niveau : un élève en pack a une
+    `inscription_matiere` réelle par matière (tarif fractionné du forfait
+    pack), visible et comptée normalement par chaque professeur — ce n'est
+    qu'un mode de tarification, pas un type d'inscription à part.
+    `reduction_mensuelle_cents` est un montant fixe qui ne touche à AUCUNE
+    inscription : les matières suivies restent réelles (donc comptées
+    normalement pour la paie), seul le calcul de l'échéance de l'élève
+    l'ignore et facture ce montant à la place. Les deux sont mutuellement
+    exclusifs (contrainte `ck_eleve_pack_reduction_exclusifs`)."""
+
     __tablename__ = "eleve"
     __table_args__ = (
         Index(
@@ -56,10 +53,12 @@ class Eleve(Base):
         ),
         Index("ix_eleve_nom", "nom", "prenom"),
         CheckConstraint(
-            "(mode_facturation = 'NORMAL' AND montant_mensuel_fixe_cents IS NULL) "
-            "OR (mode_facturation <> 'NORMAL' AND montant_mensuel_fixe_cents IS NOT NULL "
-            "AND montant_mensuel_fixe_cents >= 0)",
-            name="ck_eleve_facturation_coherente",
+            "reduction_mensuelle_cents IS NULL OR reduction_mensuelle_cents >= 0",
+            name="ck_eleve_reduction_positive",
+        ),
+        CheckConstraint(
+            "NOT (est_pack AND reduction_mensuelle_cents IS NOT NULL)",
+            name="ck_eleve_pack_reduction_exclusifs",
         ),
     )
 
@@ -75,10 +74,8 @@ class Eleve(Base):
     statut: Mapped[StatutEleve] = mapped_column(
         Enum(StatutEleve, name="statut_eleve"), default=StatutEleve.ACTIF
     )
-    mode_facturation: Mapped[ModeFacturation] = mapped_column(
-        Enum(ModeFacturation, name="mode_facturation"), default=ModeFacturation.NORMAL
-    )
-    montant_mensuel_fixe_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    est_pack: Mapped[bool] = mapped_column(Boolean, default=False)
+    reduction_mensuelle_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     observation: Mapped[str | None] = mapped_column(Text, nullable=True)
     cree_par: Mapped[int] = mapped_column(BigInteger, ForeignKey("utilisateur.id"))
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -149,7 +146,6 @@ class FraisInscription(Base):
 __all__ = [
     "Eleve",
     "StatutEleve",
-    "ModeFacturation",
     "InscriptionMatiere",
     "FraisInscription",
     "StatutFrais",

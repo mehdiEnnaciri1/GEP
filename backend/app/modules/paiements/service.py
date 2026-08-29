@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflitMetier, RessourceIntrouvable, ValidationMetier
 from app.modules.audit.service import journaliser
-from app.modules.eleves.models import Eleve, ModeFacturation, StatutFrais
+from app.modules.eleves.models import Eleve, StatutFrais
 from app.modules.eleves.repository import (
     EleveRepository,
     FraisInscriptionRepository,
@@ -269,32 +269,43 @@ class PaiementService:
             if not inscriptions_actives:
                 continue
 
-            # PACK / PERSONNALISE : montant fixe (copié à l'engagement, voir
-            # ModeFacturation), indépendant de la somme des inscriptions —
-            # mais il faut quand même au moins une inscription active ce
-            # mois-ci pour générer une échéance, même règle que NORMAL.
-            if eleve.mode_facturation == ModeFacturation.NORMAL:
-                montant_du = sum(i.tarif_mensuel_cents for i in inscriptions_actives)
-            else:
-                assert eleve.montant_mensuel_fixe_cents is not None  # garanti par la contrainte DB
-                montant_du = eleve.montant_mensuel_fixe_cents
             echeance = await self._echeances.creer(
                 Echeance(
                     eleve_id=eleve.id,
                     periode=periode,
-                    montant_du_cents=montant_du,
+                    montant_du_cents=(
+                        eleve.reduction_mensuelle_cents
+                        if eleve.reduction_mensuelle_cents is not None
+                        else sum(i.tarif_mensuel_cents for i in inscriptions_actives)
+                    ),
                     montant_paye_cents=0,
                     statut=StatutEcheance.NON_PAYE,
                 )
             )
-            for inscription in inscriptions_actives:
+            # Réduction : montant fixe, indépendant des matières — une seule
+            # ligne, rattachée à la première matière suivie (ordre stable)
+            # pour satisfaire la FK, sans prétendre répartir le montant par
+            # matière. Sinon (NORMAL, ou PACK dont les inscriptions portent
+            # déjà le tarif pack fractionné) : une ligne par matière, tarif
+            # figé — la somme retombe exactement sur montant_du_cents.
+            if eleve.reduction_mensuelle_cents is not None:
+                premiere = min(inscriptions_actives, key=lambda i: i.id)
                 await self._echeances.creer_ligne(
                     LigneEcheance(
                         echeance_id=echeance.id,
-                        matiere_id=inscription.matiere_id,
-                        tarif_cents=inscription.tarif_mensuel_cents,
+                        matiere_id=premiere.matiere_id,
+                        tarif_cents=eleve.reduction_mensuelle_cents,
                     )
                 )
+            else:
+                for inscription in inscriptions_actives:
+                    await self._echeances.creer_ligne(
+                        LigneEcheance(
+                            echeance_id=echeance.id,
+                            matiere_id=inscription.matiere_id,
+                            tarif_cents=inscription.tarif_mensuel_cents,
+                        )
+                    )
             compteur += 1
 
         await journaliser(
