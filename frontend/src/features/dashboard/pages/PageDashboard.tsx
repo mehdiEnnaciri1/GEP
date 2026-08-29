@@ -4,6 +4,7 @@ import {
   AlertCircleIcon,
   BanknoteIcon,
   GraduationCapIcon,
+  HomeIcon,
   ReceiptIcon,
   TagsIcon,
   TrendingUpIcon,
@@ -165,6 +166,12 @@ export function PageDashboard() {
                   valeur={formaterMontant(indicateurs.benefice_net_cents)}
                   icone={TrendingUpIcon}
                   accent="emeraude"
+                />
+                <CarteIndicateur
+                  titre="Marge hors loyer"
+                  valeur={formaterMontant(indicateurs.marge_hors_loyer_cents)}
+                  icone={HomeIcon}
+                  accent="bleu"
                 />
               </>
             )}

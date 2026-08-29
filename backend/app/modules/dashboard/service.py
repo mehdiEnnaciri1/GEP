@@ -76,11 +76,17 @@ class DashboardService:
         total_paie = await self._dashboard.total_paie_hors_brouillon(periode)
         benefice_net = restreints.montant_total_encaisse_cents - total_charges - total_paie
 
+        total_loyer = await self._dashboard.total_loyer(periode)
+        marge_hors_loyer = restreints.montant_frais_inscription_cumules_cents - (
+            total_charges - total_loyer
+        )
+
         return IndicateursComplets(
             **restreints.model_dump(),
             total_charges_cents=total_charges,
             total_paie_cents=total_paie,
             benefice_net_cents=benefice_net,
+            marge_hors_loyer_cents=marge_hors_loyer,
         )
 
     async def evolution_effectifs(self) -> EvolutionEffectifsReponse:

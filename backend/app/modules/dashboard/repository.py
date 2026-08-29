@@ -8,7 +8,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.charges.models import Charge
+from app.modules.charges.models import CategorieCharge, Charge
 from app.modules.eleves.models import Eleve, InscriptionMatiere, StatutEleve
 from app.modules.paie.models import PaieMensuelle, StatutPaie
 from app.modules.paiements.models import Echeance, Paiement, StatutEcheance, TypePaiement
@@ -101,6 +101,23 @@ class DashboardRepository:
                 InscriptionMatiere.date_debut <= borne_fin,
                 (InscriptionMatiere.date_fin.is_(None))
                 | (InscriptionMatiere.date_fin >= borne_debut),
+            )
+        )
+        return int(resultat.scalar_one())
+
+    async def total_loyer(self, periode: str) -> int:
+        """Sous-ensemble de `total_charges` : uniquement la catégorie « Loyer »
+        (libellé exact, seed dans `app/db/seeds.py`) — sert l'indicateur
+        `marge_hors_loyer_cents` du dashboard (voir
+        docs/adr/2026-08-16-marge-hors-loyer.md)."""
+        resultat = await self._session.execute(
+            select(func.coalesce(func.sum(Charge.montant_cents), 0))
+            .select_from(Charge)
+            .join(CategorieCharge, CategorieCharge.id == Charge.categorie_id)
+            .where(
+                Charge.periode == periode,
+                Charge.annule_le.is_(None),
+                CategorieCharge.libelle == "Loyer",
             )
         )
         return int(resultat.scalar_one())

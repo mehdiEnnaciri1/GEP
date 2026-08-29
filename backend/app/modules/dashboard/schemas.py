@@ -28,6 +28,11 @@ class IndicateursComplets(IndicateursRestreints):
     total_charges_cents: int
     total_paie_cents: int
     benefice_net_cents: int
+    # Indicateur de couverture, distinct du bénéfice net : le loyer reste
+    # compté dans total_charges_cents et benefice_net_cents ci-dessus, celui-ci
+    # est un indicateur supplémentaire, pas un remplacement — voir
+    # docs/adr/2026-08-16-marge-hors-loyer.md.
+    marge_hors_loyer_cents: int
 
 
 class PointEffectif(BaseModel):

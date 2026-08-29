@@ -559,7 +559,18 @@ BENEFICE_NET = encaissements_mensualites
              + encaissements_inscriptions
              - total_charges
              - total_paie
+
+total_loyer = Σ charge.montant_cents
+    WHERE periode = P AND annule_le IS NULL
+      AND categorie_charge.libelle = 'Loyer'
+
+MARGE_HORS_LOYER = encaissements_inscriptions - (total_charges - total_loyer)
 ```
+
+`MARGE_HORS_LOYER` est un indicateur de couverture distinct de `BENEFICE_NET`,
+pas un remplacement — le loyer continue de compter normalement dans
+`total_charges` et `BENEFICE_NET` ci-dessus (voir
+`docs/adr/2026-08-16-marge-hors-loyer.md`).
 
 > **Correction apportée au §9.** La formule du cahier des charges additionne
 > « encaissements totaux » et « total des frais d'inscription ». Si les frais

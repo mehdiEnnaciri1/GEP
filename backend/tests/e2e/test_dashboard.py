@@ -72,6 +72,7 @@ async def _construire_jeu_de_donnees(session: AsyncSession, utilisateur_id: int)
     - total_charges = 10000 + 5000 = 15000
     - total_paie (hors BROUILLON) = 12000 (la paie BROUILLON à 99999 est ignorée)
     - benefice_net = 40000 - 15000 - 12000 = 13000
+    - marge_hors_loyer = frais_inscription(5000) - (charges(15000) - loyer(10000)) = 0
     """
     annee = await creer_annee_scolaire(session)
     niveau_1bac = await creer_niveau(session, code="1BAC", ordre=5)
@@ -173,13 +174,14 @@ async def _construire_jeu_de_donnees(session: AsyncSession, utilisateur_id: int)
         ]
     )
 
-    categorie = CategorieCharge(libelle="Loyer")
-    session.add(categorie)
+    categorie_loyer = CategorieCharge(libelle="Loyer")
+    categorie_eau = CategorieCharge(libelle="Eau")
+    session.add_all([categorie_loyer, categorie_eau])
     await session.flush()
     session.add_all(
         [
             Charge(
-                categorie_id=categorie.id,
+                categorie_id=categorie_loyer.id,
                 description="Loyer octobre",
                 montant_cents=10000,
                 date_charge=date(2025, 10, 1),
@@ -188,7 +190,7 @@ async def _construire_jeu_de_donnees(session: AsyncSession, utilisateur_id: int)
                 cree_par=utilisateur_id,
             ),
             Charge(
-                categorie_id=categorie.id,
+                categorie_id=categorie_eau.id,
                 description="Facture eau",
                 montant_cents=5000,
                 date_charge=date(2025, 10, 20),
@@ -248,6 +250,7 @@ class TestIndicateurs:
         assert d["total_charges_cents"] == 15000
         assert d["total_paie_cents"] == 12000
         assert d["benefice_net_cents"] == 13000
+        assert d["marge_hors_loyer_cents"] == 0
 
     async def test_caissier_vue_restreinte_sans_charges_ni_paie_ni_benefice(
         self, client: AsyncClient, session: AsyncSession
@@ -268,6 +271,7 @@ class TestIndicateurs:
         assert "total_charges_cents" not in d
         assert "total_paie_cents" not in d
         assert "benefice_net_cents" not in d
+        assert "marge_hors_loyer_cents" not in d
 
     async def test_caissier_ne_peut_pas_acceder_a_la_vue_complete(
         self, client: AsyncClient, session: AsyncSession
