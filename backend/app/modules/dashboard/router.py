@@ -13,7 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.permissions import exige_role
 from app.db.session import get_session
 from app.modules.auth.models import RoleUtilisateur, Utilisateur
-from app.modules.dashboard.schemas import IndicateursComplets, IndicateursRestreints
+from app.modules.dashboard.schemas import (
+    EvolutionEffectifsReponse,
+    IndicateursComplets,
+    IndicateursRestreints,
+)
 from app.modules.dashboard.service import DashboardService
 from app.modules.referentiel.schemas import AnneeScolairePublique
 
@@ -39,6 +43,14 @@ async def obtenir_indicateurs_restreints(
     _utilisateur: Utilisateur = Depends(_RESTREINT),
 ) -> IndicateursRestreints:
     return await DashboardService(session).indicateurs_restreints(periode)
+
+
+@router.get("/evolution-effectifs", response_model=EvolutionEffectifsReponse)
+async def obtenir_evolution_effectifs(
+    session: AsyncSession = Depends(get_session),
+    _utilisateur: Utilisateur = Depends(_RESTREINT),
+) -> EvolutionEffectifsReponse:
+    return await DashboardService(session).evolution_effectifs()
 
 
 @router.get("/complet", response_model=IndicateursComplets)

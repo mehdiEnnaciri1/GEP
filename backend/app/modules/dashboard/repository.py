@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.charges.models import Charge
-from app.modules.eleves.models import Eleve, StatutEleve
+from app.modules.eleves.models import Eleve, InscriptionMatiere, StatutEleve
 from app.modules.paie.models import PaieMensuelle, StatutPaie
 from app.modules.paiements.models import Echeance, Paiement, StatutEcheance, TypePaiement
 from app.modules.professeurs.models import Professeur
@@ -79,6 +79,28 @@ class DashboardRepository:
         resultat = await self._session.execute(
             select(func.coalesce(func.sum(Charge.montant_cents), 0)).where(
                 Charge.periode == periode, Charge.annule_le.is_(None)
+            )
+        )
+        return int(resultat.scalar_one())
+
+    async def compter_eleves_actifs_periode(self, annee_scolaire_id: int, periode: str) -> int:
+        """Élèves de `annee_scolaire_id` comptant pour `periode` (graphe
+        d'évolution des effectifs) : non ARCHIVE, avec au moins une inscription
+        à une matière active durant le mois. Un SUSPENDU compte quand même
+        s'il avait une inscription active (§8 de docs/02-modele-donnees.md) —
+        seul ARCHIVE exclut."""
+        borne_debut = premier_jour(periode)
+        borne_fin = dernier_jour(periode)
+        resultat = await self._session.execute(
+            select(func.count(func.distinct(Eleve.id)))
+            .select_from(Eleve)
+            .join(InscriptionMatiere, InscriptionMatiere.eleve_id == Eleve.id)
+            .where(
+                Eleve.annee_scolaire_id == annee_scolaire_id,
+                Eleve.statut != StatutEleve.ARCHIVE,
+                InscriptionMatiere.date_debut <= borne_fin,
+                (InscriptionMatiere.date_fin.is_(None))
+                | (InscriptionMatiere.date_fin >= borne_debut),
             )
         )
         return int(resultat.scalar_one())

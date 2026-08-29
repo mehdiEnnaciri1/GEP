@@ -16,7 +16,9 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Progress } from '@/components/ui/progress'
 import { Skeleton } from '@/components/ui/skeleton'
+import { GraphiqueEvolutionEffectifs } from '@/features/dashboard/components/GraphiqueEvolutionEffectifs'
 import {
+  useEvolutionEffectifs,
   useIndicateursComplets,
   useIndicateursRestreints,
 } from '@/features/dashboard/hooks/useDashboard'
@@ -82,6 +84,9 @@ export function PageDashboard() {
   const complet = useIndicateursComplets(estAdmin ? periode : undefined)
   const indicateurs = estAdmin ? complet.data : restreint.data
   const isLoading = estAdmin ? complet.isLoading : restreint.isLoading
+
+  // Graphe fixe, indépendant de `periode` — une ligne par année scolaire.
+  const evolutionEffectifs = useEvolutionEffectifs()
 
   const libelleNiveau = (niveauCode: string) =>
     niveaux?.find((n) => n.code === niveauCode)?.libelle ?? niveauCode
@@ -164,6 +169,11 @@ export function PageDashboard() {
               </>
             )}
           </div>
+
+          <GraphiqueEvolutionEffectifs
+            annees={evolutionEffectifs.data?.annees}
+            isLoading={evolutionEffectifs.isLoading}
+          />
 
           <Card>
             <CardContent>

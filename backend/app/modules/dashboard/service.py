@@ -15,12 +15,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import ValidationMetier
 from app.modules.dashboard.repository import DashboardRepository
 from app.modules.dashboard.schemas import (
+    EvolutionAnnee,
+    EvolutionEffectifsReponse,
     IndicateurNiveauEleves,
     IndicateursComplets,
     IndicateursRestreints,
+    PointEffectif,
 )
 from app.modules.referentiel.models import AnneeScolaire
 from app.modules.referentiel.repository import AnneeScolaireRepository
+
+# Une année scolaire commence toujours en septembre (convention du graphe
+# d'évolution des effectifs, indépendante de date_debut/date_fin réels de
+# l'année, qui peuvent varier légèrement) — 9,10,11,12 puis 1..8.
+_MOIS_ANNEE_SCOLAIRE = [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
 
 
 class DashboardService:
@@ -74,3 +82,17 @@ class DashboardService:
             total_paie_cents=total_paie,
             benefice_net_cents=benefice_net,
         )
+
+    async def evolution_effectifs(self) -> EvolutionEffectifsReponse:
+        annees_scolaires = []
+        for annee in await self._annees.lister():
+            annee_debut = int(annee.libelle.split("-")[0])
+            points = []
+            for mois in _MOIS_ANNEE_SCOLAIRE:
+                annee_civile = annee_debut if mois >= 9 else annee_debut + 1
+                periode = f"{annee_civile:04d}-{mois:02d}"
+                nb = await self._dashboard.compter_eleves_actifs_periode(annee.id, periode)
+                points.append(PointEffectif(mois=mois, nb=nb))
+            annees_scolaires.append(EvolutionAnnee(libelle=annee.libelle, points=points))
+
+        return EvolutionEffectifsReponse(annees=annees_scolaires)

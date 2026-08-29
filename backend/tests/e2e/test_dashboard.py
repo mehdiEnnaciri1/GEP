@@ -13,7 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import RoleUtilisateur
 from app.modules.charges.models import CategorieCharge, Charge
-from app.modules.eleves.models import Eleve, StatutEleve
+from app.modules.eleves.models import Eleve, InscriptionMatiere, StatutEleve
 from app.modules.paie.models import PaieMensuelle, StatutPaie
 from app.modules.paiements.models import (
     Echeance,
@@ -23,7 +23,7 @@ from app.modules.paiements.models import (
     TypePaiement,
 )
 from tests.factories.professeurs import creer_professeur
-from tests.factories.referentiel import creer_annee_scolaire, creer_niveau
+from tests.factories.referentiel import creer_annee_scolaire, creer_matiere, creer_niveau
 from tests.factories.utilisateur import MOT_DE_PASSE_TEST, construire_utilisateur
 
 PERIODE = "2025-10"
@@ -320,3 +320,112 @@ class TestAnneesDisponibles:
             "/api/dashboard/annees-dispo", headers={"Authorization": f"Bearer {jeton}"}
         )
         assert rep.status_code == 200
+
+
+class TestEvolutionEffectifs:
+    """Jeu de données connu, un mois de coupure et un statut par cas — voir
+    §8 de docs/02-modele-donnees.md pour la règle de comptage.
+
+    Année scolaire 2025-2026 (septembre 2025 → août 2026) :
+    - A, ACTIF, inscrit du 2025-09-01 sans fin -> compte tous les mois (12/12)
+    - B, ACTIF, inscrit du 2025-09-01 au 2025-11-30 -> compte sept/oct/nov,
+      plus du tout à partir de décembre
+    - C, SUSPENDU, inscrit du 2025-09-01 sans fin -> compte quand même tous
+      les mois (SUSPENDU n'exclut pas, seul ARCHIVE exclut)
+    - D, ARCHIVE, inscrit du 2025-09-01 sans fin -> ne compte JAMAIS
+    - E, ACTIF, inscrit à partir du 2026-01-15 -> ne compte qu'à partir de
+      janvier 2026 (pas avant, l'inscription n'existait pas encore)
+
+    nb attendu par mois : sept=3, oct=3, nov=3, dec=2, puis jan..août=3.
+    """
+
+    async def test_comptage_mensuel_sur_un_jeu_connu(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        jeton, utilisateur_id = await _jeton_admin(client, session)
+        annee = await creer_annee_scolaire(
+            session, libelle="2025-2026", date_debut=date(2025, 9, 1), date_fin=date(2026, 6, 30)
+        )
+        niveau = await creer_niveau(session)
+        matiere = await creer_matiere(session)
+
+        def _eleve(matricule: str, statut: StatutEleve) -> Eleve:
+            return Eleve(
+                matricule=matricule,
+                nom="Eleve",
+                prenom=matricule,
+                telephone_parent="0600000000",
+                niveau_code=niveau.code,
+                annee_scolaire_id=annee.id,
+                date_inscription=date(2025, 9, 1),
+                statut=statut,
+                cree_par=utilisateur_id,
+            )
+
+        eleve_a = _eleve("EFF-A", StatutEleve.ACTIF)
+        eleve_b = _eleve("EFF-B", StatutEleve.ACTIF)
+        eleve_c = _eleve("EFF-C", StatutEleve.SUSPENDU)
+        eleve_d = _eleve("EFF-D", StatutEleve.ARCHIVE)
+        eleve_e = _eleve("EFF-E", StatutEleve.ACTIF)
+        session.add_all([eleve_a, eleve_b, eleve_c, eleve_d, eleve_e])
+        await session.flush()
+
+        def _inscription(
+            eleve_id: int, date_debut: date, date_fin: date | None
+        ) -> InscriptionMatiere:
+            return InscriptionMatiere(
+                eleve_id=eleve_id,
+                matiere_id=matiere.id,
+                tarif_mensuel_cents=20000,
+                date_debut=date_debut,
+                date_fin=date_fin,
+                cree_par=utilisateur_id,
+            )
+
+        session.add_all(
+            [
+                _inscription(eleve_a.id, date(2025, 9, 1), None),
+                _inscription(eleve_b.id, date(2025, 9, 1), date(2025, 11, 30)),
+                _inscription(eleve_c.id, date(2025, 9, 1), None),
+                _inscription(eleve_d.id, date(2025, 9, 1), None),
+                _inscription(eleve_e.id, date(2026, 1, 15), None),
+            ]
+        )
+        await session.commit()
+
+        rep = await client.get(
+            "/api/dashboard/evolution-effectifs", headers={"Authorization": f"Bearer {jeton}"}
+        )
+        assert rep.status_code == 200
+        annees = rep.json()["annees"]
+        assert len(annees) == 1
+        assert annees[0]["libelle"] == "2025-2026"
+
+        points = annees[0]["points"]
+        mois_ordonnes = [p["mois"] for p in points]
+        assert mois_ordonnes == [9, 10, 11, 12, 1, 2, 3, 4, 5, 6, 7, 8]
+
+        nb_par_mois = {p["mois"]: p["nb"] for p in points}
+        attendu = {9: 3, 10: 3, 11: 3, 12: 2, 1: 3, 2: 3, 3: 3, 4: 3, 5: 3, 6: 3, 7: 3, 8: 3}
+        assert nb_par_mois == attendu
+
+    async def test_caissier_peut_consulter_professeur_non(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        jeton_caissier = await _jeton(
+            client, session, role=RoleUtilisateur.CAISSIER, email="caissier4@test.ma"
+        )
+        rep = await client.get(
+            "/api/dashboard/evolution-effectifs",
+            headers={"Authorization": f"Bearer {jeton_caissier}"},
+        )
+        assert rep.status_code == 200
+
+        jeton_prof = await _jeton(
+            client, session, role=RoleUtilisateur.PROFESSEUR, email="prof2@test.ma"
+        )
+        rep_prof = await client.get(
+            "/api/dashboard/evolution-effectifs",
+            headers={"Authorization": f"Bearer {jeton_prof}"},
+        )
+        assert rep_prof.status_code == 403

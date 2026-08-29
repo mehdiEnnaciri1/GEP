@@ -28,3 +28,21 @@ class IndicateursComplets(IndicateursRestreints):
     total_charges_cents: int
     total_paie_cents: int
     benefice_net_cents: int
+
+
+class PointEffectif(BaseModel):
+    mois: int
+    nb: int
+
+
+class EvolutionAnnee(BaseModel):
+    libelle: str
+    points: list[PointEffectif]
+
+
+class EvolutionEffectifsReponse(BaseModel):
+    """Graphe fixe du dashboard — une ligne par année scolaire, indépendant du
+    filtre de période mensuel. `points` va toujours de septembre à août,
+    12 éléments, `mois` porte le numéro de mois calendaire (1-12)."""
+
+    annees: list[EvolutionAnnee]

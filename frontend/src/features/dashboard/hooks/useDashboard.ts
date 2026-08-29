@@ -1,7 +1,11 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { api } from '@/api/client'
-import type { IndicateursComplets, IndicateursRestreints } from '@/features/dashboard/types'
+import type {
+  EvolutionEffectifsReponse,
+  IndicateursComplets,
+  IndicateursRestreints,
+} from '@/features/dashboard/types'
 import type { AnneeScolaire } from '@/features/referentiel/types'
 
 export function useAnneesDisponibles() {
@@ -24,5 +28,14 @@ export function useIndicateursComplets(periode: string | undefined) {
     queryKey: ['dashboard', 'complet', periode],
     queryFn: () => api<IndicateursComplets>(`/dashboard/complet?periode=${periode}`),
     enabled: periode !== undefined,
+  })
+}
+
+export function useEvolutionEffectifs() {
+  // Graphe fixe, indépendant du filtre de période mensuel du dashboard — une
+  // seule requête, jamais reliée à `periode`.
+  return useQuery({
+    queryKey: ['dashboard', 'evolution-effectifs'],
+    queryFn: () => api<EvolutionEffectifsReponse>('/dashboard/evolution-effectifs'),
   })
 }

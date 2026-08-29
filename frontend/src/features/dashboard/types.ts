@@ -18,3 +18,17 @@ export interface IndicateursComplets extends IndicateursRestreints {
   total_paie_cents: number
   benefice_net_cents: number
 }
+
+export interface PointEffectif {
+  mois: number
+  nb: number
+}
+
+export interface EvolutionAnnee {
+  libelle: string
+  points: PointEffectif[]
+}
+
+export interface EvolutionEffectifsReponse {
+  annees: EvolutionAnnee[]
+}
