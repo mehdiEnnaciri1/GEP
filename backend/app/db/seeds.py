@@ -83,13 +83,6 @@ PARAMETRES = [
         "inscrits | payants — voir décision D4",
     ),
     ("nom_centre", "Centre", "texte", "Affiché sur les reçus et rapports"),
-    (
-        "tarif_reduction_defaut_cents",
-        "0",
-        "entier",
-        "Montant proposé par défaut à la création d'une réduction — voir "
-        "docs/adr/2026-08-29-pack-et-reduction.md",
-    ),
 ]
 
 

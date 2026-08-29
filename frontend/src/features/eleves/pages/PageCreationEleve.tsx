@@ -14,9 +14,8 @@ import { useCreerEleve } from '@/features/eleves/hooks/useEleves'
 import { useAnneesScolaires } from '@/features/referentiel/hooks/useAnneesScolaires'
 import { useMatieres } from '@/features/referentiel/hooks/useMatieres'
 import { useNiveaux } from '@/features/referentiel/hooks/useNiveaux'
-import { useParametres } from '@/features/referentiel/hooks/useParametres'
 import { useTarifsPack } from '@/features/referentiel/hooks/useTarifs'
-import { centimesVersDirhams, dirhamsVersCentimes, formaterMontant } from '@/lib/money'
+import { dirhamsVersCentimes, formaterMontant } from '@/lib/money'
 
 const schema = z
   .object({
@@ -61,7 +60,6 @@ export function PageCreationEleve() {
   const { data: niveaux } = useNiveaux()
   const { data: matieres } = useMatieres()
   const { data: annees } = useAnneesScolaires()
-  const { data: parametres } = useParametres()
   const creation = useCreerEleve()
 
   const anneeActiveId = annees?.find((a) => a.est_active)?.id
@@ -86,7 +84,6 @@ export function PageCreationEleve() {
 
   const matieresActives = matieres?.filter((m) => m.actif) ?? []
   const tarifPackNiveau = tarifsPack?.find((t) => t.niveau_code === niveauCode)
-  const montantReductionDefaut = parametres?.find((p) => p.cle === 'tarif_reduction_defaut_cents')
 
   // Pack coché : toutes les matières actives sont sélectionnées et grisées —
   // pas de choix à faire, voir EleveService.creer (composé automatiquement
@@ -101,14 +98,6 @@ export function PageCreationEleve() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [estPack, matieres])
-
-  // Réduction cochée : préremplit avec le montant par défaut du référentiel.
-  useEffect(() => {
-    if (reductionActive && montantReductionDefaut) {
-      setValue('reduction_dh', String(centimesVersDirhams(Number(montantReductionDefaut.valeur))))
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reductionActive])
 
   const suivant = async () => {
     const valide = await trigger(CHAMPS_PAR_ETAPE[etape])
