@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApercuJustificatif } from '@/features/charges/components/ApercuJustificatif'
+import { GraphiqueChargesParCategorie } from '@/features/charges/components/GraphiqueChargesParCategorie'
 import {
   useAnnulerCharge,
   useCategoriesCharge,
@@ -51,7 +52,7 @@ export function PageCharges() {
     periode: periodeFiltre || undefined,
     categorie_id: categorieFiltre,
   })
-  const { data: totaux } = useTotauxCharges(periodeFiltre || undefined)
+  const { data: totaux, isLoading: totauxEnCours } = useTotauxCharges(periodeFiltre || undefined)
   const creation = useCreerCharge()
   const creationCategorie = useCreerCategorieCharge()
   const annulation = useAnnulerCharge()
@@ -248,6 +249,15 @@ export function PageCharges() {
           </p>
         )}
       </div>
+
+      {periodeFiltre && (
+        <GraphiqueChargesParCategorie
+          totaux={totaux}
+          categories={categories}
+          periode={periodeFiltre}
+          isLoading={totauxEnCours}
+        />
+      )}
 
       {isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>
