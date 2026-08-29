@@ -209,7 +209,8 @@ Trois rôles, appliqués par une dépendance FastAPI (`Depends(exige_role(...))`
 |---|---|---|---|
 | Élèves | Complet | Créer, modifier | Lecture de ses niveaux |
 | Paiements | Complet + annulation | Enregistrer | Aucun |
-| Tarifs | Complet | Lecture | Aucun |
+| Tarifs élève | Complet | Lecture | Aucun |
+| Tarifs professeur | Complet | Aucun | Aucun |
 | Professeurs | Complet | Lecture | Sa fiche |
 | Paie | Générer, valider | Aucun | Sa paie en lecture |
 | Charges | Complet | Aucun | Aucun |

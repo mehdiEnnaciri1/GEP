@@ -9,10 +9,12 @@ import {
   useTarifsEleve,
   useTarifsProfesseur,
 } from '@/features/referentiel/hooks/useTarifs'
+import { useSessionStore } from '@/stores/session'
 
 import { GrilleTarifs } from '../components/GrilleTarifs'
 
 export function PageGrilleTarifs() {
+  const estAdmin = useSessionStore((s) => s.utilisateur?.role === 'ADMIN')
   const { data: annees } = useAnneesScolaires()
   const { data: niveaux } = useNiveaux()
   const { data: matieres } = useMatieres()
@@ -25,7 +27,10 @@ export function PageGrilleTarifs() {
   const anneeSelectionneeId = anneeChoisieId ?? anneeParDefaut?.id
 
   const { data: tarifsEleve } = useTarifsEleve(anneeSelectionneeId)
-  const { data: tarifsProfesseur } = useTarifsProfesseur(anneeSelectionneeId)
+  // Tarifs professeurs réservés à ADMIN côté serveur — voir
+  // docs/adr/2026-08-16-tarifs-prof-admin-only.md. `estAdmin` évite l'appel
+  // et masque la section pour CAISSIER, qui n'en a pas l'usage à la caisse.
+  const { data: tarifsProfesseur } = useTarifsProfesseur(anneeSelectionneeId, estAdmin)
   const definirTarifEleve = useDefinirTarifEleve(anneeSelectionneeId)
   const definirTarifProfesseur = useDefinirTarifProfesseur(anneeSelectionneeId)
 
@@ -85,22 +90,24 @@ export function PageGrilleTarifs() {
             />
           </section>
 
-          <section className="space-y-2">
-            <h2 className="text-sm font-medium">Tarif professeur (par élève, en DH)</h2>
-            <GrilleTarifs
-              niveaux={niveaux}
-              matieres={matieresActives}
-              tarifsParCle={tarifsProfesseurParCle}
-              enregistrementEnCours={definirTarifProfesseur.isPending}
-              onDefinirTarif={(niveauCode, matiereId, montantCents) =>
-                definirTarifProfesseur.mutate({
-                  niveau_code: niveauCode,
-                  matiere_id: matiereId,
-                  montant_par_eleve_cents: montantCents,
-                })
-              }
-            />
-          </section>
+          {estAdmin && (
+            <section className="space-y-2">
+              <h2 className="text-sm font-medium">Tarif professeur (par élève, en DH)</h2>
+              <GrilleTarifs
+                niveaux={niveaux}
+                matieres={matieresActives}
+                tarifsParCle={tarifsProfesseurParCle}
+                enregistrementEnCours={definirTarifProfesseur.isPending}
+                onDefinirTarif={(niveauCode, matiereId, montantCents) =>
+                  definirTarifProfesseur.mutate({
+                    niveau_code: niveauCode,
+                    matiere_id: matiereId,
+                    montant_par_eleve_cents: montantCents,
+                  })
+                }
+              />
+            </section>
+          )}
         </>
       )}
     </div>

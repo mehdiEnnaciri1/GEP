@@ -354,3 +354,33 @@ class TestTarifsProfesseur:
             headers={"Authorization": f"Bearer {jeton_caissier}"},
         )
         assert ecriture.status_code == 403
+
+    async def test_lecture_reservee_a_admin(self, client: AsyncClient, session: AsyncSession):
+        """Les tarifs professeurs révèlent la marge du centre — contrairement
+        aux tarifs élève, le caissier n'y a plus accès du tout, pas même en
+        lecture (voir docs/adr/2026-08-16-tarifs-prof-admin-only.md)."""
+        jeton_admin = await _jeton(
+            client, session, role=RoleUtilisateur.ADMIN, email="admin13@test.ma"
+        )
+        annee_id = (
+            await client.post(
+                "/api/referentiel/annees-scolaires",
+                json=ANNEE_2025_2026,
+                headers={"Authorization": f"Bearer {jeton_admin}"},
+            )
+        ).json()["id"]
+
+        lecture_admin = await client.get(
+            f"/api/referentiel/tarifs-professeur?annee_scolaire_id={annee_id}",
+            headers={"Authorization": f"Bearer {jeton_admin}"},
+        )
+        assert lecture_admin.status_code == 200
+
+        jeton_caissier = await _jeton(
+            client, session, role=RoleUtilisateur.CAISSIER, email="caissier7@test.ma"
+        )
+        lecture_caissier = await client.get(
+            f"/api/referentiel/tarifs-professeur?annee_scolaire_id={annee_id}",
+            headers={"Authorization": f"Bearer {jeton_caissier}"},
+        )
+        assert lecture_caissier.status_code == 403

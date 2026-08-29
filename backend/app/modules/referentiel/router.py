@@ -183,7 +183,10 @@ async def definir_tarif_eleve(
 async def lister_tarifs_professeur(
     annee_scolaire_id: int,
     session: AsyncSession = Depends(get_session),
-    _utilisateur: Utilisateur = Depends(_LECTURE),
+    # ADMIN seul : les tarifs professeurs révèlent la marge du centre par
+    # matière/niveau, contrairement aux tarifs élève dont le caissier a besoin
+    # à la caisse. Voir docs/adr/2026-08-16-tarifs-prof-admin-only.md.
+    _utilisateur: Utilisateur = Depends(_ECRITURE),
 ) -> list[TarifProfesseurPublique]:
     tarifs = await TarifService(session).lister_tarifs_professeur(annee_scolaire_id)
     return [TarifProfesseurPublique.model_validate(t) for t in tarifs]

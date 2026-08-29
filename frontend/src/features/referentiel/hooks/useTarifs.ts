@@ -25,14 +25,16 @@ export function useDefinirTarifEleve(anneeScolaireId: number | undefined) {
   })
 }
 
-export function useTarifsProfesseur(anneeScolaireId: number | undefined) {
+export function useTarifsProfesseur(anneeScolaireId: number | undefined, actif = true) {
   return useQuery({
     queryKey: ['referentiel', 'tarifs-professeur', anneeScolaireId],
     queryFn: () =>
       api<TarifProfesseur[]>(
         `/referentiel/tarifs-professeur?annee_scolaire_id=${anneeScolaireId}`,
       ),
-    enabled: anneeScolaireId !== undefined,
+    // Réservé à ADMIN côté serveur (voir docs/adr/2026-08-16-tarifs-prof-admin-only.md) —
+    // `actif` évite d'émettre un appel voué au 403 quand l'appelant est CAISSIER.
+    enabled: anneeScolaireId !== undefined && actif,
   })
 }
 
