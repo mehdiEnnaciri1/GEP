@@ -59,8 +59,10 @@ describe('App', () => {
 
     render(<App />)
 
+    // "/" redirige vers /dashboard (voir App.tsx) — le message d'accueil y
+    // est rendu immédiatement, indépendamment du chargement des indicateurs.
     await waitFor(() => {
-      expect(screen.getByText(/Connecté en tant que Test Admin/)).toBeInTheDocument()
+      expect(screen.getByText(/Bonjour, Test/)).toBeInTheDocument()
     })
   })
 })

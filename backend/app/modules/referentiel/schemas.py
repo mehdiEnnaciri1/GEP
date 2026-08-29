@@ -86,6 +86,21 @@ class TarifElevePublique(BaseModel):
     montant_cents: int
 
 
+class TarifPackDefinition(BaseModel):
+    annee_scolaire_id: int
+    niveau_code: str
+    montant_cents: int = Field(ge=0)
+
+
+class TarifPackPublique(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    annee_scolaire_id: int
+    niveau_code: str
+    montant_cents: int
+
+
 class TarifProfesseurDefinition(BaseModel):
     annee_scolaire_id: int
     niveau_code: str

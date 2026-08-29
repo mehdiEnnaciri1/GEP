@@ -1,5 +1,6 @@
 export type StatutEleve = 'ACTIF' | 'SUSPENDU' | 'ARCHIVE'
 export type StatutFrais = 'NON_PAYE' | 'PAYE'
+export type ModeFacturation = 'NORMAL' | 'PACK' | 'PERSONNALISE'
 
 export interface InscriptionMatiere {
   id: number
@@ -28,6 +29,8 @@ export interface Eleve {
   annee_scolaire_id: number
   date_inscription: string
   statut: StatutEleve
+  mode_facturation: ModeFacturation
+  montant_mensuel_fixe_cents: number | null
   observation: string | null
 }
 
@@ -51,5 +54,7 @@ export interface CreationEleve {
   niveau_code: string
   date_inscription: string
   observation?: string
+  mode_facturation?: ModeFacturation
+  montant_personnalise_cents?: number
   matiere_ids: number[]
 }

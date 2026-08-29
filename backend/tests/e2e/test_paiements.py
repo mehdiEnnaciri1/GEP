@@ -95,6 +95,51 @@ class TestGenerationEcheances:
         assert impayes.json()[0]["statut"] == "NON_PAYE"
         assert impayes.json()[0]["eleve_niveau_code"] == niveau_code
 
+    async def test_eleve_personnalise_utilise_le_montant_fixe_pas_la_somme_des_matieres(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """PACK et PERSONNALISE partagent le même mécanisme (montant fixe sur
+        `eleve.montant_mensuel_fixe_cents`) — un seul test suffit à couvrir la
+        branche, PACK n'ajoutant qu'une façon différente de le renseigner."""
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin6@test.ma")
+        headers = {"Authorization": f"Bearer {jeton}"}
+        annee = await creer_annee_scolaire(session)
+        niveau = await creer_niveau(session)
+        matiere = await creer_matiere(session)
+        await creer_tarif_eleve(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere.id,
+            montant_cents=20000,
+        )
+
+        creation = await client.post(
+            "/api/eleves",
+            json={
+                "nom": "Idrissi",
+                "prenom": "Nadia",
+                "telephone_parent": "0600000000",
+                "niveau_code": niveau.code,
+                "date_inscription": "2025-09-15",
+                "mode_facturation": "PERSONNALISE",
+                "montant_personnalise_cents": 12000,
+                "matiere_ids": [matiere.id],
+            },
+            headers=headers,
+        )
+        assert creation.status_code == 201
+
+        reponse = await client.post(
+            "/api/paiements/generer-echeances", json={"periode": PERIODE}, headers=headers
+        )
+        assert reponse.status_code == 200
+        assert reponse.json()["nombre_generees"] == 1
+
+        impayes = await client.get(f"/api/paiements/impayes?periode={PERIODE}", headers=headers)
+        # 12000 (montant personnalisé), PAS 20000 (le tarif réel de la matière).
+        assert impayes.json()[0]["montant_du_cents"] == 12000
+
     async def test_idempotent_ne_duplique_pas(self, client: AsyncClient, session: AsyncSession):
         jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin2@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}

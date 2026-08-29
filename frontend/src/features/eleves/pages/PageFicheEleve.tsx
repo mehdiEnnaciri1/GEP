@@ -26,9 +26,15 @@ export function PageFicheEleve() {
   const nomMatiere = (matiereId: number) =>
     matieres?.find((m) => m.id === matiereId)?.libelle ?? `Matière #${matiereId}`
 
-  const totalMensuel = eleve.inscriptions
-    .filter((i) => i.date_fin === null)
-    .reduce((somme, i) => somme + i.tarif_mensuel_cents, 0)
+  // PACK / PERSONNALISE : le montant dû réel est fixe (`montant_mensuel_fixe_cents`),
+  // indépendant de la somme des tarifs par matière affichés ci-dessous — ceux-ci
+  // restent réels (paie professeur), seul le total facturé à l'élève diffère.
+  const totalMensuel =
+    eleve.mode_facturation === 'NORMAL'
+      ? eleve.inscriptions
+          .filter((i) => i.date_fin === null)
+          .reduce((somme, i) => somme + i.tarif_mensuel_cents, 0)
+      : (eleve.montant_mensuel_fixe_cents ?? 0)
 
   const prochainStatut = PROCHAIN_STATUT[eleve.statut]
 
@@ -42,6 +48,11 @@ export function PageFicheEleve() {
           <p className="font-mono text-xs text-muted-foreground">{eleve.matricule}</p>
         </div>
         <div className="flex items-center gap-2">
+          {eleve.mode_facturation !== 'NORMAL' && (
+            <span className="rounded-full border px-2 py-1 text-xs">
+              {eleve.mode_facturation === 'PACK' ? 'Pack' : 'Réduction'}
+            </span>
+          )}
           <span className="rounded-full border px-2 py-1 text-xs">{eleve.statut}</span>
           <Button asChild size="sm">
             <Link to={`/caisse/${eleve.id}`}>Caisse</Link>
@@ -79,7 +90,15 @@ export function PageFicheEleve() {
                 </tr>
               ))}
             <tr className="font-medium">
-              <td className="py-1">Total mensuel</td>
+              <td className="py-1">
+                Total mensuel
+                {eleve.mode_facturation !== 'NORMAL' && (
+                  <span className="ml-1 font-normal text-muted-foreground">
+                    ({eleve.mode_facturation === 'PACK' ? 'forfait pack' : 'montant personnalisé'},
+                    pas la somme ci-dessus)
+                  </span>
+                )}
+              </td>
               <td className="py-1 text-right">{formaterMontant(totalMensuel)}</td>
             </tr>
           </tbody>

@@ -13,6 +13,7 @@ from app.modules.referentiel.models import (
     Niveau,
     Parametre,
     TarifEleve,
+    TarifPack,
     TarifProfesseur,
 )
 
@@ -117,7 +118,46 @@ class TarifEleveRepository:
         )
         return resultat.scalar_one_or_none()
 
+    async def lister_par_niveau(self, annee_scolaire_id: int, niveau_code: str) -> list[TarifEleve]:
+        """Matières tarifées pour ce niveau — sert à composer le PACK
+        (`ModeFacturation.PACK`) : « toutes les matières du niveau » se
+        définit ici comme « toutes les matières ayant un tarif pour ce
+        niveau », seul signal disponible dans ce modèle de données (les
+        matières ne sont pas rattachées à un niveau ailleurs)."""
+        resultat = await self._session.execute(
+            select(TarifEleve).where(
+                TarifEleve.annee_scolaire_id == annee_scolaire_id,
+                TarifEleve.niveau_code == niveau_code,
+            )
+        )
+        return list(resultat.scalars().all())
+
     async def creer(self, tarif: TarifEleve) -> TarifEleve:
+        self._session.add(tarif)
+        await self._session.flush()
+        return tarif
+
+
+class TarifPackRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def lister_par_annee(self, annee_scolaire_id: int) -> list[TarifPack]:
+        resultat = await self._session.execute(
+            select(TarifPack).where(TarifPack.annee_scolaire_id == annee_scolaire_id)
+        )
+        return list(resultat.scalars().all())
+
+    async def get_par_cle(self, annee_scolaire_id: int, niveau_code: str) -> TarifPack | None:
+        resultat = await self._session.execute(
+            select(TarifPack).where(
+                TarifPack.annee_scolaire_id == annee_scolaire_id,
+                TarifPack.niveau_code == niveau_code,
+            )
+        )
+        return resultat.scalar_one_or_none()
+
+    async def creer(self, tarif: TarifPack) -> TarifPack:
         self._session.add(tarif)
         await self._session.flush()
         return tarif

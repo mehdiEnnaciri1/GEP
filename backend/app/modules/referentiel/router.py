@@ -23,6 +23,8 @@ from app.modules.referentiel.schemas import (
     ParametrePublique,
     TarifEleveDefinition,
     TarifElevePublique,
+    TarifPackDefinition,
+    TarifPackPublique,
     TarifProfesseurDefinition,
     TarifProfesseurPublique,
 )
@@ -174,6 +176,31 @@ async def definir_tarif_eleve(
         donnees.annee_scolaire_id, donnees.niveau_code, donnees.matiere_id, donnees.montant_cents
     )
     return TarifElevePublique.model_validate(tarif)
+
+
+# ---- Tarifs pack (forfait toutes matières du niveau) -----------------------
+
+
+@router.get("/tarifs-pack", response_model=list[TarifPackPublique])
+async def lister_tarifs_pack(
+    annee_scolaire_id: int,
+    session: AsyncSession = Depends(get_session),
+    _utilisateur: Utilisateur = Depends(_LECTURE),
+) -> list[TarifPackPublique]:
+    tarifs = await TarifService(session).lister_tarifs_pack(annee_scolaire_id)
+    return [TarifPackPublique.model_validate(t) for t in tarifs]
+
+
+@router.put("/tarifs-pack", response_model=TarifPackPublique)
+async def definir_tarif_pack(
+    donnees: TarifPackDefinition,
+    session: AsyncSession = Depends(get_session),
+    _utilisateur: Utilisateur = Depends(_ECRITURE),
+) -> TarifPackPublique:
+    tarif = await TarifService(session).definir_tarif_pack(
+        donnees.annee_scolaire_id, donnees.niveau_code, donnees.montant_cents
+    )
+    return TarifPackPublique.model_validate(tarif)
 
 
 # ---- Tarifs professeur ---------------------------------------------------------

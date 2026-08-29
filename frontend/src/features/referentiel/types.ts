@@ -34,6 +34,13 @@ export interface TarifEleve {
   montant_cents: number
 }
 
+export interface TarifPack {
+  id: number
+  annee_scolaire_id: number
+  niveau_code: string
+  montant_cents: number
+}
+
 export interface TarifProfesseur {
   id: number
   annee_scolaire_id: number

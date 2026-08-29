@@ -17,6 +17,7 @@ from tests.factories.referentiel import (
     creer_matiere,
     creer_niveau,
     creer_tarif_eleve,
+    creer_tarif_pack,
 )
 from tests.factories.utilisateur import MOT_DE_PASSE_TEST, construire_utilisateur
 
@@ -188,6 +189,136 @@ class TestCreationEleve:
     async def test_sans_jeton(self, client: AsyncClient):
         reponse = await client.get("/api/eleves")
         assert reponse.status_code == 401
+
+
+class TestModeFacturation:
+    """PACK et PERSONNALISE — voir docs/adr/2026-08-29-pack-et-reduction.md.
+    Dans les deux cas, la paie des professeurs n'est pas concernée : elle
+    compte les `inscription_matiere`, créées normalement dans les deux modes."""
+
+    async def test_pack_inscrit_automatiquement_toutes_les_matieres_du_niveau(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        annee = await creer_annee_scolaire(session)
+        niveau = await creer_niveau(session)
+        matiere_math = await creer_matiere(session, code="MATH", libelle="Mathématiques")
+        matiere_svt = await creer_matiere(session, code="SVT", libelle="SVT")
+        await creer_tarif_eleve(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_math.id,
+            montant_cents=30000,
+        )
+        await creer_tarif_eleve(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_svt.id,
+            montant_cents=25000,
+        )
+        await creer_tarif_pack(
+            session, annee_scolaire_id=annee.id, niveau_code=niveau.code, montant_cents=45000
+        )
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="pack1@test.ma")
+
+        reponse = await client.post(
+            "/api/eleves",
+            json={
+                "nom": "Bennani",
+                "prenom": "Sara",
+                "telephone_parent": "0600000000",
+                "niveau_code": niveau.code,
+                "date_inscription": "2025-09-15",
+                "mode_facturation": "PACK",
+                # matiere_ids envoyé quand même, doit être ignoré au profit
+                # des matières tarifées du niveau.
+                "matiere_ids": [],
+            },
+            headers={"Authorization": f"Bearer {jeton}"},
+        )
+
+        assert reponse.status_code == 201
+        corps = reponse.json()
+        assert corps["mode_facturation"] == "PACK"
+        assert corps["montant_mensuel_fixe_cents"] == 45000
+        matieres_inscrites = {i["matiere_id"] for i in corps["inscriptions"]}
+        assert matieres_inscrites == {matiere_math.id, matiere_svt.id}
+        # Le tarif de chaque inscription reste celui de la matière — inchangé
+        # pour le calcul de la paie professeur, indépendant du forfait pack.
+        tarifs = {i["matiere_id"]: i["tarif_mensuel_cents"] for i in corps["inscriptions"]}
+        assert tarifs[matiere_math.id] == 30000
+        assert tarifs[matiere_svt.id] == 25000
+
+    async def test_pack_refuse_si_aucun_tarif_pack_defini(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        annee_id, niveau_code, matiere_id = await _preparer_referentiel(session)
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="pack2@test.ma")
+
+        reponse = await client.post(
+            "/api/eleves",
+            json={
+                "nom": "Bennani",
+                "prenom": "Sara",
+                "telephone_parent": "0600000000",
+                "niveau_code": niveau_code,
+                "date_inscription": "2025-09-15",
+                "mode_facturation": "PACK",
+                "matiere_ids": [],
+            },
+            headers={"Authorization": f"Bearer {jeton}"},
+        )
+        assert reponse.status_code == 404
+
+    async def test_personnalise_utilise_le_montant_saisi(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        _, niveau_code, matiere_id = await _preparer_referentiel(session)
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="perso1@test.ma")
+
+        donnees = _donnees_eleve(niveau_code, matiere_id)
+        donnees["mode_facturation"] = "PERSONNALISE"
+        donnees["montant_personnalise_cents"] = 15000
+
+        reponse = await client.post(
+            "/api/eleves", json=donnees, headers={"Authorization": f"Bearer {jeton}"}
+        )
+        assert reponse.status_code == 201
+        corps = reponse.json()
+        assert corps["mode_facturation"] == "PERSONNALISE"
+        assert corps["montant_mensuel_fixe_cents"] == 15000
+        # L'inscription garde le vrai tarif de la matière (paie professeur
+        # inchangée), le montant personnalisé ne s'applique qu'à l'échéance.
+        assert corps["inscriptions"][0]["tarif_mensuel_cents"] == 20000
+
+    async def test_personnalise_sans_montant_refuse(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        _, niveau_code, matiere_id = await _preparer_referentiel(session)
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="perso2@test.ma")
+
+        donnees = _donnees_eleve(niveau_code, matiere_id)
+        donnees["mode_facturation"] = "PERSONNALISE"
+
+        reponse = await client.post(
+            "/api/eleves", json=donnees, headers={"Authorization": f"Bearer {jeton}"}
+        )
+        assert reponse.status_code == 422
+
+    async def test_normal_avec_montant_personnalise_refuse(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        _, niveau_code, matiere_id = await _preparer_referentiel(session)
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="perso3@test.ma")
+
+        donnees = _donnees_eleve(niveau_code, matiere_id)
+        donnees["montant_personnalise_cents"] = 15000
+
+        reponse = await client.post(
+            "/api/eleves", json=donnees, headers={"Authorization": f"Bearer {jeton}"}
+        )
+        assert reponse.status_code == 422
 
 
 class TestListeEtFiltres:

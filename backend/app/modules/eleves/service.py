@@ -7,7 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import RessourceIntrouvable, ValidationMetier
 from app.modules.audit.service import journaliser
-from app.modules.eleves.models import Eleve, FraisInscription, InscriptionMatiere, StatutEleve
+from app.modules.eleves.models import (
+    Eleve,
+    FraisInscription,
+    InscriptionMatiere,
+    ModeFacturation,
+    StatutEleve,
+)
 from app.modules.eleves.repository import (
     EleveRepository,
     FraisInscriptionRepository,
@@ -20,6 +26,7 @@ from app.modules.referentiel.repository import (
     NiveauRepository,
     ParametreRepository,
     TarifEleveRepository,
+    TarifPackRepository,
 )
 
 _MONTANT_FRAIS_PAR_DEFAUT_CENTS = 5000
@@ -35,6 +42,7 @@ class EleveService:
         self._niveaux = NiveauRepository(session)
         self._matieres = MatiereRepository(session)
         self._tarifs_eleve = TarifEleveRepository(session)
+        self._tarifs_pack = TarifPackRepository(session)
         self._parametres = ParametreRepository(session)
 
     async def creer(
@@ -60,6 +68,35 @@ class EleveService:
         numero = await self._eleves.prochain_numero_matricule()
         matricule = f"E-{annee_matricule}-{numero:04d}"
 
+        # PACK : « toutes les matières du niveau » = toutes celles qui ont un
+        # tarif_eleve défini pour ce niveau (seul signal de rattachement
+        # matière/niveau dans ce modèle) — matiere_ids envoyé par le client
+        # est ignoré dans ce mode, voir EleveCreation.
+        montant_mensuel_fixe: int | None = None
+        if donnees.mode_facturation == ModeFacturation.PACK:
+            tarif_pack = await self._tarifs_pack.get_par_cle(annee_active.id, donnees.niveau_code)
+            if tarif_pack is None:
+                raise RessourceIntrouvable(
+                    f"Aucun tarif pack défini pour {donnees.niveau_code} pour l'année "
+                    f"{annee_active.libelle} — définissez-le dans le référentiel avant "
+                    "d'inscrire un élève en pack."
+                )
+            tarifs_niveau = await self._tarifs_eleve.lister_par_niveau(
+                annee_active.id, donnees.niveau_code
+            )
+            if not tarifs_niveau:
+                raise RessourceIntrouvable(
+                    f"Aucune matière tarifée pour {donnees.niveau_code} — impossible de "
+                    "composer un pack."
+                )
+            matiere_ids = [t.matiere_id for t in tarifs_niveau]
+            montant_mensuel_fixe = tarif_pack.montant_cents
+        elif donnees.mode_facturation == ModeFacturation.PERSONNALISE:
+            matiere_ids = donnees.matiere_ids
+            montant_mensuel_fixe = donnees.montant_personnalise_cents
+        else:
+            matiere_ids = donnees.matiere_ids
+
         eleve = await self._eleves.creer(
             Eleve(
                 matricule=matricule,
@@ -71,12 +108,14 @@ class EleveService:
                 annee_scolaire_id=annee_active.id,
                 date_inscription=donnees.date_inscription,
                 observation=donnees.observation,
+                mode_facturation=donnees.mode_facturation,
+                montant_mensuel_fixe_cents=montant_mensuel_fixe,
                 cree_par=utilisateur_id,
             )
         )
 
         inscriptions = []
-        for matiere_id in donnees.matiere_ids:
+        for matiere_id in matiere_ids:
             if await self._matieres.get_by_id(matiere_id) is None:
                 raise RessourceIntrouvable(f"Matière {matiere_id} introuvable.")
 

@@ -12,6 +12,7 @@ from app.modules.referentiel.models import (
     Niveau,
     Parametre,
     TarifEleve,
+    TarifPack,
     TarifProfesseur,
 )
 from app.modules.referentiel.repository import (
@@ -20,6 +21,7 @@ from app.modules.referentiel.repository import (
     NiveauRepository,
     ParametreRepository,
     TarifEleveRepository,
+    TarifPackRepository,
     TarifProfesseurRepository,
 )
 from app.modules.referentiel.schemas import (
@@ -148,17 +150,21 @@ class TarifService:
         self._niveaux = NiveauRepository(session)
         self._matieres = MatiereRepository(session)
         self._tarifs_eleve = TarifEleveRepository(session)
+        self._tarifs_pack = TarifPackRepository(session)
         self._tarifs_professeur = TarifProfesseurRepository(session)
 
     async def _verifier_cle(
         self, annee_scolaire_id: int, niveau_code: str, matiere_id: int
     ) -> None:
+        await self._verifier_cle_niveau(annee_scolaire_id, niveau_code)
+        if await self._matieres.get_by_id(matiere_id) is None:
+            raise RessourceIntrouvable(f"Matière {matiere_id} introuvable.")
+
+    async def _verifier_cle_niveau(self, annee_scolaire_id: int, niveau_code: str) -> None:
         if await self._annees.get_by_id(annee_scolaire_id) is None:
             raise RessourceIntrouvable(f"Année scolaire {annee_scolaire_id} introuvable.")
         if not await self._niveaux.existe(niveau_code):
             raise RessourceIntrouvable(f"Niveau {niveau_code} introuvable.")
-        if await self._matieres.get_by_id(matiere_id) is None:
-            raise RessourceIntrouvable(f"Matière {matiere_id} introuvable.")
 
     async def lister_tarifs_eleve(self, annee_scolaire_id: int) -> list[TarifEleve]:
         return await self._tarifs_eleve.lister_par_annee(annee_scolaire_id)
@@ -210,6 +216,29 @@ class TarifService:
             )
         else:
             tarif.montant_par_eleve_cents = montant_par_eleve_cents
+
+        await self._session.commit()
+        return tarif
+
+    async def lister_tarifs_pack(self, annee_scolaire_id: int) -> list[TarifPack]:
+        return await self._tarifs_pack.lister_par_annee(annee_scolaire_id)
+
+    async def definir_tarif_pack(
+        self, annee_scolaire_id: int, niveau_code: str, montant_cents: int
+    ) -> TarifPack:
+        await self._verifier_cle_niveau(annee_scolaire_id, niveau_code)
+
+        tarif = await self._tarifs_pack.get_par_cle(annee_scolaire_id, niveau_code)
+        if tarif is None:
+            tarif = await self._tarifs_pack.creer(
+                TarifPack(
+                    annee_scolaire_id=annee_scolaire_id,
+                    niveau_code=niveau_code,
+                    montant_cents=montant_cents,
+                )
+            )
+        else:
+            tarif.montant_cents = montant_cents
 
         await self._session.commit()
         return tarif

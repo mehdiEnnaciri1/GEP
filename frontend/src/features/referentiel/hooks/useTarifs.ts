@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/api/client'
-import type { TarifEleve, TarifProfesseur } from '@/features/referentiel/types'
+import type { TarifEleve, TarifPack, TarifProfesseur } from '@/features/referentiel/types'
 
 export function useTarifsEleve(anneeScolaireId: number | undefined) {
   return useQuery({
@@ -22,6 +22,27 @@ export function useDefinirTarifEleve(anneeScolaireId: number | undefined) {
       }),
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: ['referentiel', 'tarifs-eleve', anneeScolaireId] }),
+  })
+}
+
+export function useTarifsPack(anneeScolaireId: number | undefined) {
+  return useQuery({
+    queryKey: ['referentiel', 'tarifs-pack', anneeScolaireId],
+    queryFn: () => api<TarifPack[]>(`/referentiel/tarifs-pack?annee_scolaire_id=${anneeScolaireId}`),
+    enabled: anneeScolaireId !== undefined,
+  })
+}
+
+export function useDefinirTarifPack(anneeScolaireId: number | undefined) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (donnees: { niveau_code: string; montant_cents: number }) =>
+      api<TarifPack>('/referentiel/tarifs-pack', {
+        method: 'PUT',
+        body: JSON.stringify({ annee_scolaire_id: anneeScolaireId, ...donnees }),
+      }),
+    onSuccess: () =>
+      queryClient.invalidateQueries({ queryKey: ['referentiel', 'tarifs-pack', anneeScolaireId] }),
   })
 }
 

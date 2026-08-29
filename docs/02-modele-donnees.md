@@ -502,6 +502,15 @@ et (`date_fin IS NULL` OU `date_fin >= premier jour du mois`).
 
 Un élève `SUSPENDU` ou `ARCHIVE` ne génère pas d'échéance.
 
+> **Pack et montant personnalisé** (voir
+> `docs/adr/2026-08-29-pack-et-reduction.md`). Si `eleve.mode_facturation`
+> vaut `PACK` ou `PERSONNALISE`, `montant_du` n'est **pas** la somme
+> ci-dessus : c'est `eleve.montant_mensuel_fixe_cents`, un montant fixe copié
+> à l'engagement (même principe D1 que le tarif par matière). Les
+> `inscription_matiere` existent quand même normalement dans les deux cas —
+> seul le montant facturé à l'élève change, jamais le comptage utilisé pour
+> la paie professeur (§8.3, inchangée).
+
 ### 8.2 Statut d'une échéance
 
 ```

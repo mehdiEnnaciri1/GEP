@@ -29,6 +29,22 @@ class StatutEleve(enum.StrEnum):
     ARCHIVE = "ARCHIVE"
 
 
+class ModeFacturation(enum.StrEnum):
+    """NORMAL : montant dû = somme des tarifs des matières inscrites (§8.1).
+    PACK : forfait fixe couvrant toutes les matières tarifées du niveau
+    (copié depuis `tarif_pack` à l'engagement, même principe que D1). Un
+    élève PACK a quand même une `inscription_matiere` par matière — la paie
+    des professeurs (comptage par matière/niveau) n'est pas affectée.
+    PERSONNALISE : montant fixe saisi à la main par l'admin/caissier, pour
+    toute l'année scolaire. Dans les deux cas non-NORMAL, le montant vient
+    de `eleve.montant_mensuel_fixe_cents`, jamais de la somme des
+    inscriptions."""
+
+    NORMAL = "NORMAL"
+    PACK = "PACK"
+    PERSONNALISE = "PERSONNALISE"
+
+
 class Eleve(Base):
     __tablename__ = "eleve"
     __table_args__ = (
@@ -39,6 +55,12 @@ class Eleve(Base):
             postgresql_where=text("statut = 'ACTIF'"),
         ),
         Index("ix_eleve_nom", "nom", "prenom"),
+        CheckConstraint(
+            "(mode_facturation = 'NORMAL' AND montant_mensuel_fixe_cents IS NULL) "
+            "OR (mode_facturation <> 'NORMAL' AND montant_mensuel_fixe_cents IS NOT NULL "
+            "AND montant_mensuel_fixe_cents >= 0)",
+            name="ck_eleve_facturation_coherente",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -53,6 +75,10 @@ class Eleve(Base):
     statut: Mapped[StatutEleve] = mapped_column(
         Enum(StatutEleve, name="statut_eleve"), default=StatutEleve.ACTIF
     )
+    mode_facturation: Mapped[ModeFacturation] = mapped_column(
+        Enum(ModeFacturation, name="mode_facturation"), default=ModeFacturation.NORMAL
+    )
+    montant_mensuel_fixe_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     observation: Mapped[str | None] = mapped_column(Text, nullable=True)
     cree_par: Mapped[int] = mapped_column(BigInteger, ForeignKey("utilisateur.id"))
     cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -123,6 +149,7 @@ class FraisInscription(Base):
 __all__ = [
     "Eleve",
     "StatutEleve",
+    "ModeFacturation",
     "InscriptionMatiere",
     "FraisInscription",
     "StatutFrais",

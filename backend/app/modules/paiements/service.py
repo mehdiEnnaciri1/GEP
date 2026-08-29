@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflitMetier, RessourceIntrouvable, ValidationMetier
 from app.modules.audit.service import journaliser
-from app.modules.eleves.models import Eleve, StatutFrais
+from app.modules.eleves.models import Eleve, ModeFacturation, StatutFrais
 from app.modules.eleves.repository import (
     EleveRepository,
     FraisInscriptionRepository,
@@ -269,7 +269,15 @@ class PaiementService:
             if not inscriptions_actives:
                 continue
 
-            montant_du = sum(i.tarif_mensuel_cents for i in inscriptions_actives)
+            # PACK / PERSONNALISE : montant fixe (copié à l'engagement, voir
+            # ModeFacturation), indépendant de la somme des inscriptions —
+            # mais il faut quand même au moins une inscription active ce
+            # mois-ci pour générer une échéance, même règle que NORMAL.
+            if eleve.mode_facturation == ModeFacturation.NORMAL:
+                montant_du = sum(i.tarif_mensuel_cents for i in inscriptions_actives)
+            else:
+                assert eleve.montant_mensuel_fixe_cents is not None  # garanti par la contrainte DB
+                montant_du = eleve.montant_mensuel_fixe_cents
             echeance = await self._echeances.creer(
                 Echeance(
                     eleve_id=eleve.id,

@@ -12,6 +12,7 @@ from app.modules.referentiel.models import (
     Matiere,
     Niveau,
     TarifEleve,
+    TarifPack,
     TarifProfesseur,
 )
 
@@ -69,6 +70,21 @@ async def creer_tarif_eleve(
         niveau_code=niveau_code,
         matiere_id=matiere_id,
         montant_cents=montant_cents,
+    )
+    session.add(tarif)
+    await session.commit()
+    return tarif
+
+
+async def creer_tarif_pack(
+    session: AsyncSession,
+    *,
+    annee_scolaire_id: int,
+    niveau_code: str,
+    montant_cents: int = 50000,
+) -> TarifPack:
+    tarif = TarifPack(
+        annee_scolaire_id=annee_scolaire_id, niveau_code=niveau_code, montant_cents=montant_cents
     )
     session.add(tarif)
     await session.commit()

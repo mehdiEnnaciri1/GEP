@@ -11,19 +11,40 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCreerEleve } from '@/features/eleves/hooks/useEleves'
+import type { ModeFacturation } from '@/features/eleves/types'
 import { useMatieres } from '@/features/referentiel/hooks/useMatieres'
 import { useNiveaux } from '@/features/referentiel/hooks/useNiveaux'
+import { dirhamsVersCentimes } from '@/lib/money'
 
-const schema = z.object({
-  nom: z.string().min(1, 'Nom requis'),
-  prenom: z.string().min(1, 'Prénom requis'),
-  telephone_eleve: z.string().optional(),
-  telephone_parent: z.string().min(1, 'Téléphone du parent requis'),
-  date_inscription: z.string().min(1, 'Date requise'),
-  observation: z.string().optional(),
-  niveau_code: z.string().min(1, 'Niveau requis'),
-  matiere_ids: z.array(z.number()).min(1, 'Choisissez au moins une matière'),
-})
+const schema = z
+  .object({
+    nom: z.string().min(1, 'Nom requis'),
+    prenom: z.string().min(1, 'Prénom requis'),
+    telephone_eleve: z.string().optional(),
+    telephone_parent: z.string().min(1, 'Téléphone du parent requis'),
+    date_inscription: z.string().min(1, 'Date requise'),
+    observation: z.string().optional(),
+    niveau_code: z.string().min(1, 'Niveau requis'),
+    mode_facturation: z.enum(['NORMAL', 'PACK', 'PERSONNALISE']),
+    montant_personnalise_dh: z.string().optional(),
+    matiere_ids: z.array(z.number()),
+  })
+  .superRefine((donnees, ctx) => {
+    if (donnees.mode_facturation !== 'PACK' && donnees.matiere_ids.length === 0) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['matiere_ids'],
+        message: 'Choisissez au moins une matière',
+      })
+    }
+    if (donnees.mode_facturation === 'PERSONNALISE' && !donnees.montant_personnalise_dh?.trim()) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['montant_personnalise_dh'],
+        message: 'Montant requis',
+      })
+    }
+  })
 
 type Donnees = z.infer<typeof schema>
 
@@ -31,12 +52,13 @@ const ETAPES = ['Identité', 'Niveau', 'Matières'] as const
 const CHAMPS_PAR_ETAPE: Record<number, (keyof Donnees)[]> = {
   0: ['nom', 'prenom', 'telephone_parent', 'date_inscription'],
   1: ['niveau_code'],
-  2: ['matiere_ids'],
+  2: ['matiere_ids', 'mode_facturation', 'montant_personnalise_dh'],
 }
 
 export function PageCreationEleve() {
   const navigate = useNavigate()
   const [etape, setEtape] = useState(0)
+  const [erreurMontant, setErreurMontant] = useState(false)
   const { data: niveaux } = useNiveaux()
   const { data: matieres } = useMatieres()
   const creation = useCreerEleve()
@@ -50,10 +72,11 @@ export function PageCreationEleve() {
     formState: { errors },
   } = useForm<Donnees>({
     resolver: zodResolver(schema),
-    defaultValues: { matiere_ids: [] },
+    defaultValues: { matiere_ids: [], mode_facturation: 'NORMAL' },
   })
 
   const matiereIds = watch('matiere_ids')
+  const modeFacturation = watch('mode_facturation')
 
   const suivant = async () => {
     const valide = await trigger(CHAMPS_PAR_ETAPE[etape])
@@ -63,9 +86,32 @@ export function PageCreationEleve() {
   const precedent = () => setEtape((e) => Math.max(e - 1, 0))
 
   const onSubmit = handleSubmit((donnees) => {
-    creation.mutate(donnees, {
-      onSuccess: (eleve) => navigate(`/eleves/${eleve.id}`),
-    })
+    setErreurMontant(false)
+    let montant_personnalise_cents: number | undefined
+    if (donnees.mode_facturation === 'PERSONNALISE') {
+      try {
+        montant_personnalise_cents = dirhamsVersCentimes(donnees.montant_personnalise_dh ?? '')
+      } catch {
+        setErreurMontant(true)
+        return
+      }
+    }
+
+    creation.mutate(
+      {
+        nom: donnees.nom,
+        prenom: donnees.prenom,
+        telephone_eleve: donnees.telephone_eleve,
+        telephone_parent: donnees.telephone_parent,
+        niveau_code: donnees.niveau_code,
+        date_inscription: donnees.date_inscription,
+        observation: donnees.observation,
+        mode_facturation: donnees.mode_facturation,
+        montant_personnalise_cents,
+        matiere_ids: donnees.mode_facturation === 'PACK' ? [] : donnees.matiere_ids,
+      },
+      { onSuccess: (eleve) => navigate(`/eleves/${eleve.id}`) },
+    )
   })
 
   const basculerMatiere = (id: number) => {
@@ -75,6 +121,12 @@ export function PageCreationEleve() {
       actuel.includes(id) ? actuel.filter((m) => m !== id) : [...actuel, id],
       { shouldValidate: true },
     )
+  }
+
+  const basculerMode = (mode: Exclude<ModeFacturation, 'NORMAL'>) => {
+    setValue('mode_facturation', modeFacturation === mode ? 'NORMAL' : mode, {
+      shouldValidate: true,
+    })
   }
 
   return (
@@ -151,21 +203,66 @@ export function PageCreationEleve() {
         )}
 
         {etape === 2 && (
-          <div className="space-y-2">
-            {matieres
-              ?.filter((m) => m.actif)
-              .map((matiere) => (
-                <label key={matiere.id} className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={matiereIds?.includes(matiere.id) ?? false}
-                    onChange={() => basculerMatiere(matiere.id)}
+          <div className="space-y-4">
+            <div className="space-y-2 rounded-lg border p-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={modeFacturation === 'PACK'}
+                  onChange={() => basculerMode('PACK')}
+                />
+                Pack — toutes les matières du niveau
+              </label>
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={modeFacturation === 'PERSONNALISE'}
+                  onChange={() => basculerMode('PERSONNALISE')}
+                />
+                Réduction — montant mensuel personnalisé
+              </label>
+              {modeFacturation === 'PERSONNALISE' && (
+                <div className="space-y-1 pt-1">
+                  <Label htmlFor="montant_personnalise_dh">Montant mensuel fixe (DH)</Label>
+                  <Input
+                    id="montant_personnalise_dh"
+                    inputMode="decimal"
+                    className="w-32"
+                    {...register('montant_personnalise_dh')}
                   />
-                  {matiere.libelle}
-                </label>
-              ))}
-            {errors.matiere_ids && (
-              <p className="text-xs text-destructive">{errors.matiere_ids.message}</p>
+                  {errors.montant_personnalise_dh && (
+                    <p className="text-xs text-destructive">
+                      {errors.montant_personnalise_dh.message}
+                    </p>
+                  )}
+                  {erreurMontant && <p className="text-xs text-destructive">Montant invalide.</p>}
+                </div>
+              )}
+            </div>
+
+            {modeFacturation === 'PACK' ? (
+              <p className="text-sm text-muted-foreground">
+                Toutes les matières tarifées pour ce niveau seront inscrites automatiquement, au
+                tarif forfaitaire pack — pas besoin de les choisir une par une.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {matieres
+                  ?.filter((m) => m.actif)
+                  .map((matiere) => (
+                    <label key={matiere.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={matiereIds?.includes(matiere.id) ?? false}
+                        onChange={() => basculerMatiere(matiere.id)}
+                      />
+                      {matiere.libelle}
+                    </label>
+                  ))}
+                {errors.matiere_ids && (
+                  <p className="text-xs text-destructive">{errors.matiere_ids.message}</p>
+                )}
+              </div>
             )}
           </div>
         )}

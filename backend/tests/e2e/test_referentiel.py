@@ -384,3 +384,65 @@ class TestTarifsProfesseur:
             headers={"Authorization": f"Bearer {jeton_caissier}"},
         )
         assert lecture_caissier.status_code == 403
+
+
+class TestTarifsPack:
+    async def test_admin_definit_caissier_lit_mais_ne_peut_pas_ecrire(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        niveau_code, _ = await _creer_niveau_et_matiere(session)
+        jeton_admin = await _jeton(
+            client, session, role=RoleUtilisateur.ADMIN, email="admin14@test.ma"
+        )
+        headers_admin = {"Authorization": f"Bearer {jeton_admin}"}
+
+        annee_id = (
+            await client.post(
+                "/api/referentiel/annees-scolaires", json=ANNEE_2025_2026, headers=headers_admin
+            )
+        ).json()["id"]
+
+        definition = await client.put(
+            "/api/referentiel/tarifs-pack",
+            json={
+                "annee_scolaire_id": annee_id,
+                "niveau_code": niveau_code,
+                "montant_cents": 80000,
+            },
+            headers=headers_admin,
+        )
+        assert definition.status_code == 200
+        assert definition.json()["montant_cents"] == 80000
+
+        # Rejouer avec un montant différent met à jour la même ligne (upsert),
+        # pas de doublon — même logique que tarif_eleve/tarif_professeur.
+        mise_a_jour = await client.put(
+            "/api/referentiel/tarifs-pack",
+            json={
+                "annee_scolaire_id": annee_id,
+                "niveau_code": niveau_code,
+                "montant_cents": 90000,
+            },
+            headers=headers_admin,
+        )
+        assert mise_a_jour.status_code == 200
+        assert mise_a_jour.json()["id"] == definition.json()["id"]
+        assert mise_a_jour.json()["montant_cents"] == 90000
+
+        jeton_caissier = await _jeton(
+            client, session, role=RoleUtilisateur.CAISSIER, email="caissier8@test.ma"
+        )
+        headers_caissier = {"Authorization": f"Bearer {jeton_caissier}"}
+
+        lecture = await client.get(
+            f"/api/referentiel/tarifs-pack?annee_scolaire_id={annee_id}", headers=headers_caissier
+        )
+        assert lecture.status_code == 200
+        assert lecture.json()[0]["montant_cents"] == 90000
+
+        ecriture = await client.put(
+            "/api/referentiel/tarifs-pack",
+            json={"annee_scolaire_id": annee_id, "niveau_code": niveau_code, "montant_cents": 1},
+            headers=headers_caissier,
+        )
+        assert ecriture.status_code == 403

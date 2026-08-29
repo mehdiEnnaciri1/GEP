@@ -95,6 +95,28 @@ class TarifEleve(Base):
     )
 
 
+class TarifPack(Base):
+    """Forfait couvrant toutes les matières tarifées d'un niveau — voir
+    `ModeFacturation.PACK` dans `app/modules/eleves/models.py`. Clé (année,
+    niveau) seulement, pas de matière : contrairement à `tarif_eleve`, il
+    n'y a qu'un montant par niveau."""
+
+    __tablename__ = "tarif_pack"
+    __table_args__ = (
+        CheckConstraint("montant_cents >= 0", name="ck_tarif_pack_positif"),
+        UniqueConstraint("annee_scolaire_id", "niveau_code", name="ux_tarif_pack"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    annee_scolaire_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("annee_scolaire.id"))
+    niveau_code: Mapped[str] = mapped_column(String(5), ForeignKey("niveau.code"))
+    montant_cents: Mapped[int] = mapped_column(BigInteger)
+    cree_le: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    modifie_le: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class TarifProfesseur(Base):
     __tablename__ = "tarif_professeur"
     __table_args__ = (

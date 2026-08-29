@@ -161,6 +161,11 @@ groupé.
 faut-il un tarif préférentiel dans ce cas ? Une remise changerait le modèle (il faudrait
 une notion de réduction sur l'échéance).
 
+> **Mise à jour 2026-08-29.** La notion de réduction évoquée ici est arrivée par un autre
+> chemin — pas un tarif préférentiel sur un règlement groupé, mais un montant mensuel fixe
+> par élève (`mode_facturation`). Voir `docs/adr/2026-08-29-pack-et-reduction.md`. La
+> question du règlement trimestriel/annuel elle-même reste ouverte.
+
 ---
 
 ## D9 — Élève changeant de niveau en cours d'année

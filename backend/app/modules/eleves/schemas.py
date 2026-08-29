@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.modules.eleves.models import StatutEleve, StatutFrais
+from app.modules.eleves.models import ModeFacturation, StatutEleve, StatutFrais
 
 
 class EleveCreation(BaseModel):
@@ -17,7 +17,31 @@ class EleveCreation(BaseModel):
     niveau_code: str
     date_inscription: date
     observation: str | None = None
-    matiere_ids: list[int] = Field(min_length=1)
+    # NORMAL (par défaut) : matiere_ids obligatoire, au moins une matière.
+    # PACK : matiere_ids ignoré — composé automatiquement de toutes les
+    # matières tarifées du niveau (voir EleveService.creer).
+    # PERSONNALISE : matiere_ids obligatoire comme NORMAL, mais le montant dû
+    # mensuel vient de `montant_personnalise_cents`, pas de la somme des tarifs.
+    mode_facturation: ModeFacturation = ModeFacturation.NORMAL
+    montant_personnalise_cents: int | None = Field(default=None, ge=0)
+    matiere_ids: list[int] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _verifier_coherence_facturation(self) -> EleveCreation:
+        if self.mode_facturation == ModeFacturation.PERSONNALISE:
+            if self.montant_personnalise_cents is None:
+                raise ValueError(
+                    "montant_personnalise_cents est requis en mode de facturation PERSONNALISE."
+                )
+        elif self.montant_personnalise_cents is not None:
+            raise ValueError(
+                "montant_personnalise_cents ne s'applique qu'au mode de facturation PERSONNALISE."
+            )
+
+        if self.mode_facturation != ModeFacturation.PACK and not self.matiere_ids:
+            raise ValueError("Choisissez au moins une matière.")
+
+        return self
 
 
 class EleveMiseAJour(BaseModel):
@@ -65,6 +89,8 @@ class ElevePublique(BaseModel):
     annee_scolaire_id: int
     date_inscription: date
     statut: StatutEleve
+    mode_facturation: ModeFacturation
+    montant_mensuel_fixe_cents: int | None
     observation: str | None
 
 

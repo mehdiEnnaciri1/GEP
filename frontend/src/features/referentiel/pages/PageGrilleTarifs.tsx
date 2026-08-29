@@ -5,12 +5,15 @@ import { useMatieres } from '@/features/referentiel/hooks/useMatieres'
 import { useNiveaux } from '@/features/referentiel/hooks/useNiveaux'
 import {
   useDefinirTarifEleve,
+  useDefinirTarifPack,
   useDefinirTarifProfesseur,
   useTarifsEleve,
+  useTarifsPack,
   useTarifsProfesseur,
 } from '@/features/referentiel/hooks/useTarifs'
 import { useSessionStore } from '@/stores/session'
 
+import { GrillePack } from '../components/GrillePack'
 import { GrilleTarifs } from '../components/GrilleTarifs'
 
 export function PageGrilleTarifs() {
@@ -27,16 +30,19 @@ export function PageGrilleTarifs() {
   const anneeSelectionneeId = anneeChoisieId ?? anneeParDefaut?.id
 
   const { data: tarifsEleve } = useTarifsEleve(anneeSelectionneeId)
+  const { data: tarifsPack } = useTarifsPack(anneeSelectionneeId)
   // Tarifs professeurs réservés à ADMIN côté serveur — voir
   // docs/adr/2026-08-16-tarifs-prof-admin-only.md. `estAdmin` évite l'appel
   // et masque la section pour CAISSIER, qui n'en a pas l'usage à la caisse.
   const { data: tarifsProfesseur } = useTarifsProfesseur(anneeSelectionneeId, estAdmin)
   const definirTarifEleve = useDefinirTarifEleve(anneeSelectionneeId)
+  const definirTarifPack = useDefinirTarifPack(anneeSelectionneeId)
   const definirTarifProfesseur = useDefinirTarifProfesseur(anneeSelectionneeId)
 
   const tarifsEleveParCle = new Map(
     tarifsEleve?.map((t) => [`${t.niveau_code}:${t.matiere_id}`, t.montant_cents]),
   )
+  const tarifsPackParCle = new Map(tarifsPack?.map((t) => [t.niveau_code, t.montant_cents]))
   const tarifsProfesseurParCle = new Map(
     tarifsProfesseur?.map((t) => [`${t.niveau_code}:${t.matiere_id}`, t.montant_par_eleve_cents]),
   )
@@ -86,6 +92,18 @@ export function PageGrilleTarifs() {
                   matiere_id: matiereId,
                   montant_cents: montantCents,
                 })
+              }
+            />
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-sm font-medium">Tarif pack (forfait toutes matières, en DH)</h2>
+            <GrillePack
+              niveaux={niveaux}
+              tarifsParCle={tarifsPackParCle}
+              enregistrementEnCours={definirTarifPack.isPending}
+              onDefinirTarif={(niveauCode, montantCents) =>
+                definirTarifPack.mutate({ niveau_code: niveauCode, montant_cents: montantCents })
               }
             />
           </section>
