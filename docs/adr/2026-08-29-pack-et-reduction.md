@@ -62,9 +62,18 @@ est écrite (montant = la réduction), rattachée à la première matière suivi
 montant par matière, c'est un simple ancrage. Sinon (normal ou pack), une
 ligne par matière au tarif figé, comme avant.
 
-**Activation/désactivation après création.** Activer le pack clôture les
-inscriptions en cours et en recrée une par matière tarifée du niveau, au
-tarif fractionné. Désactiver le pack clôture les inscriptions sans en
-recréer — une nouvelle inscription individuelle est un acte séparé. La
-réduction s'active/se désactive sans toucher aux inscriptions. Ces deux
-opérations sont ouvertes à ADMIN et CAISSIER (comme la création d'élève).
+**Modification après création (2026-08-30).** Un seul endpoint,
+`POST /eleves/{id}/engagement` (`EleveService.modifier_engagement`),
+remplace matières, pack et réduction en une fois, à partir d'un mois choisi
+(`periode_application`, format YYYY-MM) — jamais un jour arbitraire en cours
+de mois : ni la paie professeur ni l'échéance ne distinguent le jour, seul
+le mois d'appartenance compte. Les inscriptions en cours sont closes à la
+fin du mois précédent, les nouvelles démarrent au 1er du mois choisi, avec
+un tarif recopié à ce moment-là (même principe D1 : la nouvelle inscription
+ne référence jamais l'ancienne). Le mois choisi doit être le mois courant
+ou un mois futur, et son échéance ne doit pas déjà être générée pour cet
+élève — sinon l'engagement modifié après coup contredirait une échéance
+déjà figée. Cet endpoint remplace les anciens `POST /pack` et
+`POST /reduction` (bascules immédiates, sans date, et sans moyen de changer
+les matières d'un élève NORMAL après sa création). Ouvert à ADMIN et
+CAISSIER (comme la création d'élève).

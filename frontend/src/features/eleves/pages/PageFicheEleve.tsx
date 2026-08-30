@@ -8,9 +8,8 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
   useChangerStatutEleve,
-  useDefinirPack,
-  useDefinirReduction,
   useEleve,
+  useModifierEngagement,
 } from '@/features/eleves/hooks/useEleves'
 import type { StatutEleve } from '@/features/eleves/types'
 import { useMatieres } from '@/features/referentiel/hooks/useMatieres'
@@ -22,16 +21,26 @@ const PROCHAIN_STATUT: Record<StatutEleve, StatutEleve | null> = {
   ARCHIVE: null,
 }
 
+function moisProchain(): string {
+  const maintenant = new Date()
+  const prochain = new Date(maintenant.getFullYear(), maintenant.getMonth() + 1, 1)
+  return `${prochain.getFullYear()}-${String(prochain.getMonth() + 1).padStart(2, '0')}`
+}
+
 export function PageFicheEleve() {
   const { id } = useParams<{ id: string }>()
   const eleveId = id ? Number(id) : undefined
   const { data: eleve, isLoading } = useEleve(eleveId)
   const { data: matieres } = useMatieres()
   const changerStatut = useChangerStatutEleve()
-  const definirPack = useDefinirPack()
-  const definirReduction = useDefinirReduction()
+  const modifierEngagement = useModifierEngagement()
 
+  const [panneauOuvert, setPanneauOuvert] = useState(false)
+  const [periodeApplication, setPeriodeApplication] = useState(moisProchain())
+  const [estPack, setEstPack] = useState(false)
+  const [reductionActive, setReductionActive] = useState(false)
   const [reductionDh, setReductionDh] = useState('')
+  const [matiereIds, setMatiereIds] = useState<number[]>([])
   const [erreur, setErreur] = useState<string | null>(null)
 
   if (isLoading || !eleve) {
@@ -50,9 +59,52 @@ export function PageFicheEleve() {
     inscriptionsActives.reduce((somme, i) => somme + i.tarif_mensuel_cents, 0)
 
   const prochainStatut = PROCHAIN_STATUT[eleve.statut]
+  const matieresActives = matieres?.filter((m) => m.actif) ?? []
 
   const gererErreur = (err: unknown) =>
     setErreur(err instanceof ErreurApi ? err.message : "Erreur lors de l'opération.")
+
+  const ouvrirPanneau = () => {
+    setErreur(null)
+    setPeriodeApplication(moisProchain())
+    setEstPack(eleve.est_pack)
+    setReductionActive(eleve.reduction_mensuelle_cents !== null)
+    setReductionDh(
+      eleve.reduction_mensuelle_cents !== null
+        ? String(eleve.reduction_mensuelle_cents / 100)
+        : '',
+    )
+    setMatiereIds(inscriptionsActives.map((i) => i.matiere_id))
+    setPanneauOuvert(true)
+  }
+
+  const basculerMatiere = (id: number) =>
+    setMatiereIds((actuel) =>
+      actuel.includes(id) ? actuel.filter((m) => m !== id) : [...actuel, id],
+    )
+
+  const soumettreEngagement = () => {
+    setErreur(null)
+    let reduction_mensuelle_cents: number | null = null
+    if (reductionActive) {
+      try {
+        reduction_mensuelle_cents = dirhamsVersCentimes(reductionDh)
+      } catch {
+        setErreur('Montant de réduction invalide.')
+        return
+      }
+    }
+    modifierEngagement.mutate(
+      {
+        id: eleve.id,
+        periode_application: periodeApplication,
+        est_pack: estPack,
+        reduction_mensuelle_cents,
+        matiere_ids: estPack ? [] : matiereIds,
+      },
+      { onSuccess: () => setPanneauOuvert(false), onError: gererErreur },
+    )
+  }
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-6">
@@ -119,72 +171,95 @@ export function PageFicheEleve() {
         </table>
       </section>
 
-      <section className="space-y-2 rounded-lg border p-3 text-sm">
-        <h2 className="font-medium">Pack et réduction</h2>
-        {erreur && <p className="text-xs text-destructive">{erreur}</p>}
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={definirPack.isPending || eleve.reduction_mensuelle_cents !== null}
-            onClick={() => {
-              setErreur(null)
-              definirPack.mutate(
-                { id: eleve.id, actif: !eleve.est_pack },
-                { onError: gererErreur },
-              )
-            }}
-          >
-            {eleve.est_pack ? 'Désactiver le pack' : 'Activer le pack'}
-          </Button>
-
-          {eleve.reduction_mensuelle_cents !== null ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={definirReduction.isPending}
-              onClick={() => {
-                setErreur(null)
-                definirReduction.mutate(
-                  { id: eleve.id, actif: false },
-                  { onError: gererErreur },
-                )
-              }}
-            >
-              Désactiver la réduction
+      <section className="space-y-3 rounded-lg border p-3 text-sm">
+        <div className="flex items-center justify-between">
+          <h2 className="font-medium">Matières, pack et réduction</h2>
+          {!panneauOuvert && (
+            <Button size="sm" variant="outline" onClick={ouvrirPanneau}>
+              Modifier
             </Button>
-          ) : (
-            <>
+          )}
+        </div>
+        {erreur && <p className="text-xs text-destructive">{erreur}</p>}
+
+        {panneauOuvert && (
+          <div className="space-y-3 border-t pt-3">
+            <div className="space-y-1">
+              <label htmlFor="periode_application" className="text-xs text-muted-foreground">
+                Mois d'application des changements
+              </label>
+              <Input
+                id="periode_application"
+                type="month"
+                value={periodeApplication}
+                onChange={(e) => setPeriodeApplication(e.target.value)}
+                className="h-8 w-40"
+              />
+            </div>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={estPack}
+                onChange={() => {
+                  setEstPack((v) => !v)
+                  if (!estPack) setReductionActive(false)
+                }}
+              />
+              Pack — toutes les matières du niveau
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={reductionActive}
+                onChange={() => {
+                  setReductionActive((v) => !v)
+                  if (!reductionActive) setEstPack(false)
+                }}
+              />
+              Réduction — montant mensuel personnalisé
+            </label>
+            {reductionActive && (
               <Input
                 value={reductionDh}
                 onChange={(e) => setReductionDh(e.target.value)}
                 placeholder="Montant (DH)"
                 inputMode="decimal"
                 className="h-8 w-32"
-                disabled={eleve.est_pack}
               />
+            )}
+
+            {!estPack && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground">Matières suivies</p>
+                {matieresActives.map((matiere) => (
+                  <label key={matiere.id} className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={matiereIds.includes(matiere.id)}
+                      onChange={() => basculerMatiere(matiere.id)}
+                    />
+                    {matiere.libelle}
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div className="flex gap-2 pt-1">
               <Button
                 size="sm"
-                variant="outline"
-                disabled={definirReduction.isPending || eleve.est_pack || !reductionDh.trim()}
-                onClick={() => {
-                  setErreur(null)
-                  try {
-                    const montant_cents = dirhamsVersCentimes(reductionDh)
-                    definirReduction.mutate(
-                      { id: eleve.id, actif: true, montant_cents },
-                      { onSuccess: () => setReductionDh(''), onError: gererErreur },
-                    )
-                  } catch {
-                    setErreur('Montant invalide.')
-                  }
-                }}
+                disabled={modifierEngagement.isPending}
+                onClick={soumettreEngagement}
               >
-                Activer la réduction
+                Enregistrer
               </Button>
-            </>
-          )}
-        </div>
+              <Button size="sm" variant="ghost" onClick={() => setPanneauOuvert(false)}>
+                Annuler
+              </Button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="space-y-1 text-sm">

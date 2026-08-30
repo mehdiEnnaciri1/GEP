@@ -3,8 +3,6 @@ commite elle-même son unité de travail (voir §Couches de CLAUDE.md)."""
 
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflitMetier, RessourceIntrouvable, ValidationMetier
@@ -15,7 +13,8 @@ from app.modules.eleves.repository import (
     FraisInscriptionRepository,
     InscriptionMatiereRepository,
 )
-from app.modules.eleves.schemas import DefinirPack, DefinirReduction, EleveCreation, EleveMiseAJour
+from app.modules.eleves.schemas import EleveCreation, EleveMiseAJour, ModifierEngagement
+from app.modules.paiements.repository import EcheanceRepository
 from app.modules.referentiel.models import TarifPack
 from app.modules.referentiel.repository import (
     AnneeScolaireRepository,
@@ -25,7 +24,13 @@ from app.modules.referentiel.repository import (
     TarifEleveRepository,
     TarifPackRepository,
 )
-from app.shared.periode import FUSEAU_HORAIRE_CENTRE
+from app.shared.periode import (
+    dernier_jour,
+    periode_courante,
+    periode_precedente,
+    premier_jour,
+    valider_periode,
+)
 
 _MONTANT_FRAIS_PAR_DEFAUT_CENTS = 5000
 
@@ -56,6 +61,7 @@ class EleveService:
         self._tarifs_eleve = TarifEleveRepository(session)
         self._tarifs_pack = TarifPackRepository(session)
         self._parametres = ParametreRepository(session)
+        self._echeances = EcheanceRepository(session)
 
     async def creer(
         self, donnees: EleveCreation, utilisateur_id: int, adresse_ip: str | None
@@ -256,40 +262,45 @@ class EleveService:
         await self._session.commit()
         return eleve
 
-    async def definir_pack(
+    async def modifier_engagement(
         self,
         eleve_id: int,
-        donnees: DefinirPack,
+        donnees: ModifierEngagement,
         utilisateur_id: int,
         adresse_ip: str | None,
     ) -> tuple[Eleve, list[InscriptionMatiere], FraisInscription | None]:
-        """Active ou désactive le pack. Activer clôture les inscriptions en
-        cours et en recrée une par matière tarifée du niveau, au tarif pack
-        fractionné. Désactiver clôture les 6 inscriptions sans en recréer —
-        une nouvelle inscription individuelle est un acte séparé ensuite."""
+        """Remplace matières, pack et réduction à partir du mois choisi.
+        Clôture les inscriptions en cours à la fin du mois précédent et en
+        recrée à partir du 1er du mois d'application (jamais un jour
+        arbitraire en cours de mois : ni la paie professeur ni l'échéance ne
+        distinguent le jour, seul le mois d'appartenance compte, voir
+        `generer_echeances`/`CompteurElevesRepository`). Refuse un mois dont
+        l'échéance de cet élève est déjà générée — un engagement modifié
+        après coup ne doit jamais sembler contredire une échéance déjà figée
+        (voir CLAUDE.md : une échéance n'est jamais recalculée)."""
         eleve = await self._eleves.get_by_id(eleve_id)
         if eleve is None:
             raise RessourceIntrouvable(f"Élève {eleve_id} introuvable.")
 
-        if donnees.actif == eleve.est_pack:
-            return (
-                eleve,
-                await self._inscriptions.lister_par_eleve(eleve_id),
-                await self._frais.get_by_eleve(eleve_id),
+        try:
+            valider_periode(donnees.periode_application)
+        except ValueError as exc:
+            raise ValidationMetier(str(exc)) from exc
+        if donnees.periode_application < periode_courante():
+            raise ValidationMetier(
+                "La date d'application ne peut pas être dans un mois déjà passé."
             )
-
-        if donnees.actif and eleve.reduction_mensuelle_cents is not None:
+        if (
+            await self._echeances.get_by_eleve_et_periode(eleve_id, donnees.periode_application)
+            is not None
+        ):
             raise ConflitMetier(
-                "Cet élève a une réduction active — désactivez-la avant d'activer le pack."
+                f"L'échéance de {donnees.periode_application} est déjà générée pour cet élève — "
+                "choisissez un mois ultérieur."
             )
 
-        aujourdhui = datetime.now(FUSEAU_HORAIRE_CENTRE).date()
-        inscriptions_en_cours = [
-            i for i in await self._inscriptions.lister_par_eleve(eleve_id) if i.date_fin is None
-        ]
-
-        nouvelles_inscriptions: list[InscriptionMatiere] = []
-        if donnees.actif:
+        tarifs_fractionnes: dict[int, int] | None = None
+        if donnees.est_pack:
             tarif_pack = await self._tarifs_pack.get_par_cle(
                 eleve.annee_scolaire_id, eleve.niveau_code
             )
@@ -308,30 +319,55 @@ class EleveService:
                 )
             matiere_ids = [t.matiere_id for t in tarifs_niveau]
             tarifs_fractionnes = _fractionner_tarif_pack(tarif_pack, matiere_ids)
+        else:
+            matiere_ids = list(dict.fromkeys(donnees.matiere_ids))
 
-            for inscription in inscriptions_en_cours:
-                # max(...) : une inscription qui débute dans le futur ne peut
-                # pas être close avant sa propre date de début (ck_insc_dates).
-                inscription.date_fin = max(aujourdhui, inscription.date_debut)
+        borne_fin_mois_precedent = dernier_jour(periode_precedente(donnees.periode_application))
+        inscriptions_en_cours = [
+            i for i in await self._inscriptions.lister_par_eleve(eleve_id) if i.date_fin is None
+        ]
+        for inscription in inscriptions_en_cours:
+            # max(...) : une inscription qui débute après cette borne ne peut
+            # pas être close avant sa propre date de début (ck_insc_dates).
+            inscription.date_fin = max(borne_fin_mois_precedent, inscription.date_debut)
 
-            for matiere_id in matiere_ids:
-                nouvelles_inscriptions.append(
-                    await self._inscriptions.creer(
-                        InscriptionMatiere(
-                            eleve_id=eleve.id,
-                            matiere_id=matiere_id,
-                            tarif_mensuel_cents=tarifs_fractionnes[matiere_id],
-                            date_debut=aujourdhui,
-                            cree_par=utilisateur_id,
-                        )
+        nouvelle_date_debut = premier_jour(donnees.periode_application)
+        nouvelles_inscriptions: list[InscriptionMatiere] = []
+        for matiere_id in matiere_ids:
+            if await self._matieres.get_by_id(matiere_id) is None:
+                raise RessourceIntrouvable(f"Matière {matiere_id} introuvable.")
+
+            if tarifs_fractionnes is not None:
+                tarif_cents = tarifs_fractionnes[matiere_id]
+            else:
+                tarif = await self._tarifs_eleve.get_par_cle(
+                    eleve.annee_scolaire_id, eleve.niveau_code, matiere_id
+                )
+                if tarif is None:
+                    raise RessourceIntrouvable(
+                        f"Aucun tarif défini pour la matière {matiere_id} en "
+                        f"{eleve.niveau_code} — définissez-le dans le référentiel avant "
+                        "de l'ajouter à un élève."
+                    )
+                tarif_cents = tarif.montant_cents
+
+            nouvelles_inscriptions.append(
+                await self._inscriptions.creer(
+                    InscriptionMatiere(
+                        eleve_id=eleve.id,
+                        matiere_id=matiere_id,
+                        tarif_mensuel_cents=tarif_cents,
+                        date_debut=nouvelle_date_debut,
+                        cree_par=utilisateur_id,
                     )
                 )
-        else:
-            for inscription in inscriptions_en_cours:
-                inscription.date_fin = max(aujourdhui, inscription.date_debut)
+            )
 
         ancien_est_pack = eleve.est_pack
-        eleve.est_pack = donnees.actif
+        ancienne_reduction = eleve.reduction_mensuelle_cents
+        ancien_matiere_ids = [i.matiere_id for i in inscriptions_en_cours]
+        eleve.est_pack = donnees.est_pack
+        eleve.reduction_mensuelle_cents = donnees.reduction_mensuelle_cents
 
         await journaliser(
             self._session,
@@ -339,8 +375,14 @@ class EleveService:
             entite="eleve",
             entite_id=eleve.id,
             utilisateur_id=utilisateur_id,
-            avant={"est_pack": ancien_est_pack},
-            apres={"est_pack": donnees.actif},
+            avant={"est_pack": ancien_est_pack, "reduction_mensuelle_cents": ancienne_reduction,
+                   "matiere_ids": ancien_matiere_ids},
+            apres={
+                "est_pack": donnees.est_pack,
+                "reduction_mensuelle_cents": donnees.reduction_mensuelle_cents,
+                "matiere_ids": matiere_ids,
+                "periode_application": donnees.periode_application,
+            },
             adresse_ip=adresse_ip,
         )
         await self._session.commit()
@@ -349,38 +391,3 @@ class EleveService:
             await self._inscriptions.lister_par_eleve(eleve_id),
             await self._frais.get_by_eleve(eleve_id),
         )
-
-    async def definir_reduction(
-        self,
-        eleve_id: int,
-        donnees: DefinirReduction,
-        utilisateur_id: int,
-        adresse_ip: str | None,
-    ) -> Eleve:
-        """N'affecte AUCUNE inscription — seul le calcul de l'échéance change
-        (voir PaiementService.generer_echeances). Les matières suivies
-        restent celles déjà inscrites, utilisées normalement pour la paie."""
-        eleve = await self._eleves.get_by_id(eleve_id)
-        if eleve is None:
-            raise RessourceIntrouvable(f"Élève {eleve_id} introuvable.")
-
-        if donnees.actif and eleve.est_pack:
-            raise ConflitMetier(
-                "Cet élève est en pack — désactivez le pack avant d'activer une réduction."
-            )
-
-        ancien = eleve.reduction_mensuelle_cents
-        eleve.reduction_mensuelle_cents = donnees.montant_cents if donnees.actif else None
-
-        await journaliser(
-            self._session,
-            action="MODIFICATION",
-            entite="eleve",
-            entite_id=eleve.id,
-            utilisateur_id=utilisateur_id,
-            avant={"reduction_mensuelle_cents": ancien},
-            apres={"reduction_mensuelle_cents": eleve.reduction_mensuelle_cents},
-            adresse_ip=adresse_ip,
-        )
-        await self._session.commit()
-        return eleve

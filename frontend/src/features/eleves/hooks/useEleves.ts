@@ -3,10 +3,9 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/api/client'
 import type {
   CreationEleve,
-  DefinirPackRequete,
-  DefinirReductionRequete,
   Eleve,
   EleveDetail,
+  ModifierEngagementRequete,
   PageEleves,
   StatutEleve,
 } from '@/features/eleves/types'
@@ -67,23 +66,14 @@ export function useChangerStatutEleve() {
   })
 }
 
-export function useDefinirPack() {
+export function useModifierEngagement() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ id, ...donnees }: { id: number } & DefinirPackRequete) =>
-      api<EleveDetail>(`/eleves/${id}/pack`, { method: 'POST', body: JSON.stringify(donnees) }),
-    onSuccess: (_donnees, variables) => {
-      queryClient.invalidateQueries({ queryKey: CLE_LISTE })
-      queryClient.invalidateQueries({ queryKey: ['eleves', 'detail', variables.id] })
-    },
-  })
-}
-
-export function useDefinirReduction() {
-  const queryClient = useQueryClient()
-  return useMutation({
-    mutationFn: ({ id, ...donnees }: { id: number } & DefinirReductionRequete) =>
-      api<Eleve>(`/eleves/${id}/reduction`, { method: 'POST', body: JSON.stringify(donnees) }),
+    mutationFn: ({ id, ...donnees }: { id: number } & ModifierEngagementRequete) =>
+      api<EleveDetail>(`/eleves/${id}/engagement`, {
+        method: 'POST',
+        body: JSON.stringify(donnees),
+      }),
     onSuccess: (_donnees, variables) => {
       queryClient.invalidateQueries({ queryKey: CLE_LISTE })
       queryClient.invalidateQueries({ queryKey: ['eleves', 'detail', variables.id] })

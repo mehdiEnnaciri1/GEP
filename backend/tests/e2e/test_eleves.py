@@ -12,6 +12,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import RoleUtilisateur
+from app.shared.periode import periode_courante, periode_precedente, periode_suivante
 from tests.factories.referentiel import (
     creer_annee_scolaire,
     creer_matiere,
@@ -332,7 +333,9 @@ class TestPack:
         ancienne_inscription_id = creation.json()["inscriptions"][0]["id"]
 
         activation = await client.post(
-            f"/api/eleves/{eleve_id}/pack", json={"actif": True}, headers=headers
+            f"/api/eleves/{eleve_id}/engagement",
+            json={"periode_application": periode_courante(), "est_pack": True},
+            headers=headers,
         )
         assert activation.status_code == 200
         corps = activation.json()
@@ -343,10 +346,13 @@ class TestPack:
         assert {i["matiere_id"] for i in actives} == {matiere_math_id, matiere_svt_id}
         assert any(i["id"] == ancienne_inscription_id for i in closes)
 
-    async def test_desactiver_pack_cloture_les_inscriptions(
+    async def test_desactiver_pack_bascule_vers_les_matieres_choisies(
         self, client: AsyncClient, session: AsyncSession
     ):
-        _, niveau_code, _, _ = await _preparer_pack(session)
+        """Désactiver le pack, c'est remplacer l'engagement par un choix de
+        matières réel — pas le vider : l'élève ne peut pas se retrouver sans
+        aucune matière suivie (voir ModifierEngagement)."""
+        _, niveau_code, matiere_math_id, _ = await _preparer_pack(session)
         jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="pack4@test.ma")
         headers = {"Authorization": f"Bearer {jeton}"}
 
@@ -366,12 +372,21 @@ class TestPack:
         eleve_id = creation.json()["id"]
 
         desactivation = await client.post(
-            f"/api/eleves/{eleve_id}/pack", json={"actif": False}, headers=headers
+            f"/api/eleves/{eleve_id}/engagement",
+            json={
+                "periode_application": periode_courante(),
+                "est_pack": False,
+                "matiere_ids": [matiere_math_id],
+            },
+            headers=headers,
         )
         assert desactivation.status_code == 200
         corps = desactivation.json()
         assert corps["est_pack"] is False
-        assert all(i["date_fin"] is not None for i in corps["inscriptions"])
+        anciennes = [i for i in corps["inscriptions"] if i["date_fin"] is not None]
+        nouvelles = [i for i in corps["inscriptions"] if i["date_fin"] is None]
+        assert len(anciennes) == 2  # les 2 matières du pack, closes
+        assert {i["matiere_id"] for i in nouvelles} == {matiere_math_id}
 
     async def test_modifier_tarif_pack_referentiel_ne_change_pas_eleve_deja_inscrit(
         self, client: AsyncClient, session: AsyncSession
@@ -481,44 +496,158 @@ class TestReduction:
         assert creation.json()["reduction_mensuelle_cents"] is None
 
         activation = await client.post(
-            f"/api/eleves/{eleve_id}/reduction",
-            json={"actif": True, "montant_cents": 12000},
+            f"/api/eleves/{eleve_id}/engagement",
+            json={
+                "periode_application": periode_courante(),
+                "reduction_mensuelle_cents": 12000,
+                "matiere_ids": [matiere_id],
+            },
             headers=headers,
         )
         assert activation.status_code == 200
         assert activation.json()["reduction_mensuelle_cents"] == 12000
 
         desactivation = await client.post(
-            f"/api/eleves/{eleve_id}/reduction", json={"actif": False}, headers=headers
+            f"/api/eleves/{eleve_id}/engagement",
+            json={"periode_application": periode_courante(), "matiere_ids": [matiere_id]},
+            headers=headers,
         )
         assert desactivation.status_code == 200
         assert desactivation.json()["reduction_mensuelle_cents"] is None
 
-    async def test_reduction_refusee_si_pack_actif(
+    async def test_engagement_pack_et_reduction_incompatibles(
         self, client: AsyncClient, session: AsyncSession
     ):
-        _, niveau_code, _, _ = await _preparer_pack(session)
+        _, niveau_code, matiere_id = await _preparer_referentiel(session)
         jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="reduc4@test.ma")
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        creation = await client.post(
+            "/api/eleves", json=_donnees_eleve(niveau_code, matiere_id), headers=headers
+        )
+        eleve_id = creation.json()["id"]
+
+        reponse = await client.post(
+            f"/api/eleves/{eleve_id}/engagement",
+            json={
+                "periode_application": periode_courante(),
+                "est_pack": True,
+                "reduction_mensuelle_cents": 10000,
+            },
+            headers=headers,
+        )
+        assert reponse.status_code == 422
+
+
+class TestModifierEngagement:
+    """Modifier les matières, le pack ou la réduction d'un élève déjà
+    inscrit, à partir d'un mois choisi — avant cette fonctionnalité, un
+    élève NORMAL (ni pack ni réduction) ne pouvait jamais changer de
+    matières après sa création."""
+
+    async def test_ajoute_une_matiere_a_partir_du_mois_choisi(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        annee = await creer_annee_scolaire(session)
+        niveau = await creer_niveau(session)
+        matiere_maths = await creer_matiere(session, code="MATH", libelle="Maths")
+        matiere_svt = await creer_matiere(session, code="SVT", libelle="SVT")
+        await creer_tarif_eleve(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_maths.id,
+            montant_cents=20000,
+        )
+        await creer_tarif_eleve(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere_svt.id,
+            montant_cents=15000,
+        )
+        jeton = await _jeton(
+            client, session, role=RoleUtilisateur.ADMIN, email="engagement1@test.ma"
+        )
         headers = {"Authorization": f"Bearer {jeton}"}
 
         creation = await client.post(
             "/api/eleves",
             json={
-                "nom": "Bennani",
-                "prenom": "Sara",
+                "nom": "Fassi",
+                "prenom": "Omar",
                 "telephone_parent": "0600000000",
-                "niveau_code": niveau_code,
+                "niveau_code": niveau.code,
                 "date_inscription": "2025-09-15",
-                "est_pack": True,
-                "matiere_ids": [],
+                "matiere_ids": [matiere_maths.id],
             },
             headers=headers,
         )
         eleve_id = creation.json()["id"]
+        ancienne_inscription_id = creation.json()["inscriptions"][0]["id"]
+
+        mois_prochain = periode_suivante(periode_courante())
+        modification = await client.post(
+            f"/api/eleves/{eleve_id}/engagement",
+            json={
+                "periode_application": mois_prochain,
+                "matiere_ids": [matiere_maths.id, matiere_svt.id],
+            },
+            headers=headers,
+        )
+        assert modification.status_code == 200
+        corps = modification.json()
+        actives = [i for i in corps["inscriptions"] if i["date_fin"] is None]
+        closes = [i for i in corps["inscriptions"] if i["date_fin"] is not None]
+        assert {i["matiere_id"] for i in actives} == {matiere_maths.id, matiere_svt.id}
+        assert any(i["id"] == ancienne_inscription_id for i in closes)
+        assert all(i["date_debut"] == f"{mois_prochain}-01" for i in actives)
+
+    async def test_refuse_un_mois_deja_passe(self, client: AsyncClient, session: AsyncSession):
+        _, niveau_code, matiere_id = await _preparer_referentiel(session)
+        jeton = await _jeton(
+            client, session, role=RoleUtilisateur.ADMIN, email="engagement2@test.ma"
+        )
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        creation = await client.post(
+            "/api/eleves", json=_donnees_eleve(niveau_code, matiere_id), headers=headers
+        )
+        eleve_id = creation.json()["id"]
 
         reponse = await client.post(
-            f"/api/eleves/{eleve_id}/reduction",
-            json={"actif": True, "montant_cents": 10000},
+            f"/api/eleves/{eleve_id}/engagement",
+            json={
+                "periode_application": periode_precedente(periode_courante()),
+                "matiere_ids": [matiere_id],
+            },
+            headers=headers,
+        )
+        assert reponse.status_code == 422
+
+    async def test_refuse_un_mois_dont_lecheance_est_deja_generee(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        _, niveau_code, matiere_id = await _preparer_referentiel(session)
+        jeton = await _jeton(
+            client, session, role=RoleUtilisateur.ADMIN, email="engagement3@test.ma"
+        )
+        headers = {"Authorization": f"Bearer {jeton}"}
+
+        creation = await client.post(
+            "/api/eleves", json=_donnees_eleve(niveau_code, matiere_id), headers=headers
+        )
+        eleve_id = creation.json()["id"]
+
+        periode = periode_courante()
+        genere = await client.post(
+            "/api/paiements/generer-echeances", json={"periode": periode}, headers=headers
+        )
+        assert genere.status_code == 200
+
+        reponse = await client.post(
+            f"/api/eleves/{eleve_id}/engagement",
+            json={"periode_application": periode, "matiere_ids": [matiere_id]},
             headers=headers,
         )
         assert reponse.status_code == 409

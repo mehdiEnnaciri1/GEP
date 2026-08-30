@@ -46,21 +46,24 @@ class ChangementStatut(BaseModel):
     statut: StatutEleve
 
 
-class DefinirPack(BaseModel):
-    actif: bool
+class ModifierEngagement(BaseModel):
+    """Remplace la configuration de facturation d'un élève (matières, pack ou
+    réduction) à partir du mois choisi (`periode_application`, format
+    YYYY-MM) — jamais rétroactif sur un mois dont l'échéance est déjà
+    générée (voir EleveService.modifier_engagement). Mêmes règles de
+    cohérence qu'à la création (voir EleveCreation)."""
 
-
-class DefinirReduction(BaseModel):
-    """`actif=False` remet `reduction_mensuelle_cents` à NULL — `montant_cents`
-    est alors ignoré s'il est fourni."""
-
-    actif: bool
-    montant_cents: int | None = Field(default=None, ge=0)
+    periode_application: str
+    est_pack: bool = False
+    reduction_mensuelle_cents: int | None = Field(default=None, ge=0)
+    matiere_ids: list[int] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _verifier_montant_si_actif(self) -> DefinirReduction:
-        if self.actif and self.montant_cents is None:
-            raise ValueError("montant_cents est requis pour activer une réduction.")
+    def _verifier_coherence_facturation(self) -> ModifierEngagement:
+        if self.est_pack and self.reduction_mensuelle_cents is not None:
+            raise ValueError("Pack et réduction ne peuvent pas être actifs en même temps.")
+        if not self.est_pack and not self.matiere_ids:
+            raise ValueError("Choisissez au moins une matière.")
         return self
 
 

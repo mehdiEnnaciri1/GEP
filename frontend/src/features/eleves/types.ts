@@ -58,11 +58,9 @@ export interface CreationEleve {
   matiere_ids: number[]
 }
 
-export interface DefinirPackRequete {
-  actif: boolean
-}
-
-export interface DefinirReductionRequete {
-  actif: boolean
-  montant_cents?: number
+export interface ModifierEngagementRequete {
+  periode_application: string
+  est_pack?: boolean
+  reduction_mensuelle_cents?: number | null
+  matiere_ids?: number[]
 }

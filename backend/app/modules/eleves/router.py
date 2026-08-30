@@ -16,14 +16,13 @@ from app.modules.auth.models import RoleUtilisateur, Utilisateur
 from app.modules.eleves.models import Eleve, FraisInscription, InscriptionMatiere, StatutEleve
 from app.modules.eleves.schemas import (
     ChangementStatut,
-    DefinirPack,
-    DefinirReduction,
     EleveCreation,
     EleveDetail,
     EleveMiseAJour,
     ElevePublique,
     FraisInscriptionPublique,
     InscriptionMatierePublique,
+    ModifierEngagement,
     PageEleves,
 )
 from app.modules.eleves.service import EleveService
@@ -121,29 +120,15 @@ async def changer_statut_eleve(
     return ElevePublique.model_validate(eleve)
 
 
-@router.post("/{eleve_id}/pack", response_model=EleveDetail)
-async def definir_pack_eleve(
+@router.post("/{eleve_id}/engagement", response_model=EleveDetail)
+async def modifier_engagement_eleve(
     eleve_id: int,
-    donnees: DefinirPack,
+    donnees: ModifierEngagement,
     request: Request,
     session: AsyncSession = Depends(get_session),
     utilisateur: Utilisateur = Depends(_ACCES),
 ) -> EleveDetail:
-    eleve, inscriptions, frais = await EleveService(session).definir_pack(
+    eleve, inscriptions, frais = await EleveService(session).modifier_engagement(
         eleve_id, donnees, utilisateur.id, _adresse_ip(request)
     )
     return _detail(eleve, inscriptions, frais)
-
-
-@router.post("/{eleve_id}/reduction", response_model=ElevePublique)
-async def definir_reduction_eleve(
-    eleve_id: int,
-    donnees: DefinirReduction,
-    request: Request,
-    session: AsyncSession = Depends(get_session),
-    utilisateur: Utilisateur = Depends(_ACCES),
-) -> ElevePublique:
-    eleve = await EleveService(session).definir_reduction(
-        eleve_id, donnees, utilisateur.id, _adresse_ip(request)
-    )
-    return ElevePublique.model_validate(eleve)
