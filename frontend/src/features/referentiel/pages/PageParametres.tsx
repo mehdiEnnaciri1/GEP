@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { Building2Icon, CalculatorIcon, SettingsIcon, TagIcon, type LucideIcon } from 'lucide-react'
+import { Building2Icon, SettingsIcon, TagIcon, type LucideIcon } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -12,7 +12,6 @@ import { centimesVersDirhams, dirhamsVersCentimes } from '@/lib/money'
 const ICONES: Record<string, LucideIcon> = {
   nom_centre: Building2Icon,
   frais_inscription_cents: TagIcon,
-  base_calcul_paie: CalculatorIcon,
 }
 
 function EnTeteParametre({ cle, description }: { cle: string; description: string | null }) {
@@ -27,46 +26,6 @@ function EnTeteParametre({ cle, description }: { cle: string; description: strin
         {description && <p className="text-xs text-muted-foreground">{description}</p>}
       </div>
     </>
-  )
-}
-
-function LigneBaseCalculPaie({ valeur }: { valeur: string; description: string | null }) {
-  const miseAJour = useMettreAJourParametre()
-
-  const OPTIONS: { valeur: string; libelle: string }[] = [
-    { valeur: 'inscrits', libelle: 'Inscrits' },
-    { valeur: 'payants', libelle: 'Payants' },
-  ]
-
-  return (
-    <div className="space-y-2 py-4">
-      <div className="flex flex-wrap items-center gap-4">
-        <EnTeteParametre cle="base_calcul_paie" description="inscrits | payants — voir décision D4" />
-        <div className="flex gap-1.5 rounded-lg bg-muted p-1">
-          {OPTIONS.map((option) => (
-            <Button
-              key={option.valeur}
-              type="button"
-              size="sm"
-              variant={valeur === option.valeur ? 'default' : 'ghost'}
-              disabled={miseAJour.isPending}
-              onClick={() => miseAJour.mutate({ cle: 'base_calcul_paie', valeur: option.valeur })}
-            >
-              {option.libelle}
-            </Button>
-          ))}
-        </div>
-      </div>
-      <p className="pl-13 text-xs text-muted-foreground">
-        <span className="font-medium">N.B.</span> — décide si un professeur est payé pour un
-        élève qui n'a pas encore réglé le mois. <span className="font-medium">Inscrits</span> :
-        tous les élèves actifs de la matière/niveau comptent, payés ou non (le cours a été
-        donné). <span className="font-medium">Payants</span> : seuls les élèves dont
-        l'échéance du mois est payée (totalement ou en partie) comptent — un élève non payé ne
-        rapporte rien au professeur ce mois-là. Le changement s'applique à la prochaine
-        génération de paie, jamais aux paies déjà créées.
-      </p>
-    </div>
   )
 }
 
@@ -176,15 +135,6 @@ export function PageParametres() {
             Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="my-2 h-12 rounded-lg" />)
           ) : (
             parametres?.map((parametre) => {
-              if (parametre.cle === 'base_calcul_paie') {
-                return (
-                  <LigneBaseCalculPaie
-                    key={parametre.cle}
-                    valeur={parametre.valeur}
-                    description={parametre.description}
-                  />
-                )
-              }
               if (parametre.cle === 'frais_inscription_cents') {
                 return (
                   <LigneFraisInscription

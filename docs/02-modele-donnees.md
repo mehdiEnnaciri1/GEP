@@ -85,7 +85,6 @@ CREATE TABLE parametre (
 
 INSERT INTO parametre (cle, valeur, type_valeur, description) VALUES
   ('frais_inscription_cents', '5000',   'entier',  'Frais d''inscription en centimes (50 DH)'),
-  ('base_calcul_paie',        'inscrits','texte',  'inscrits | payants — voir décision D4'),
   ('nom_centre',              'Centre', 'texte',   'Affiché sur les reçus et rapports');
 ```
 

@@ -76,7 +76,7 @@ important à savoir maintenant.
 
 ---
 
-## D4 — Le professeur est-il payé sur les impayés ? *(bloquante)*
+## D4 — Le professeur est-il payé sur les impayés ? *(bloquante, fixée)*
 
 **Ce que dit le CDC.** « Nombre d'élèves **inscrits** dans cette matière et ce niveau. »
 
@@ -84,12 +84,19 @@ important à savoir maintenant.
 C'est défendable — le cours a été donné — mais c'est une décision de gestion, pas une
 évidence technique, et elle a un impact direct sur la trésorerie du centre.
 
-**Décision retenue.** Paramètre `base_calcul_paie`, valeur par défaut `inscrits`
-(lecture littérale du CDC). L'alternative `payants` ne compterait que les élèves dont
-l'échéance du mois est `PAYE` ou `PARTIEL`.
+**Décision retenue (2026-08-30).** La paie ne dépend jamais du statut de paiement des
+élèves — seuls les élèves **inscrits** comptent, payés ou non. Un paramètre
+`base_calcul_paie` avec une alternative `payants` (élèves dont l'échéance du mois est
+`PAYE` ou `PARTIEL`) avait été introduit comme option admin ; le client a confirmé que
+cette dépendance n'est jamais souhaitée, y compris comme choix ponctuel — un professeur
+avec des élèves inscrits mais pas encore payés se retrouvait avec une paie à 0 DH, ce qui
+n'est jamais correct. Le paramètre et l'alternative `payants` ont été retirés : le
+calcul est désormais toujours sur les inscrits, sans réglage possible.
 
-**Question au client.** Un élève inscrit en maths qui n'a pas payé le mois de novembre
-compte-t-il dans la paie du professeur de novembre ? Et un élève suspendu en cours de mois ?
+La question du trop-perçu / non-perçu du centre reste distincte : la paie du professeur
+(BROUILLON dès la génération) est verrouillée par l'admin (`VALIDEE` puis `PAYEE`) —
+c'est ce verrouillage manuel, pas le statut de paiement des élèves, qui détermine si
+et quand le professeur est effectivement réglé.
 
 ---
 
@@ -233,7 +240,7 @@ même élève.
 | D1 | Figeage des tarifs | Copie à l'engagement | Oui |
 | D2 | Double comptage inscription | Types de paiement disjoints | Oui |
 | D3 | Un prof par (matière, niveau) | Contrainte d'unicité | Oui |
-| D4 | Paie sur inscrits ou payants | `inscrits` | Oui |
+| D4 | Paie sur inscrits ou payants | `inscrits`, sans alternative (fixée) | Oui |
 | D5 | Année scolaire | Table dédiée, une active | Non, mais recommandée |
 | D6 | Facturation du mois d'entrée | Mois entier | Non |
 | D7 | Blocage frais d'inscription | Alerte, pas blocage | Non |

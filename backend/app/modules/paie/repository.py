@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.eleves.models import Eleve, InscriptionMatiere, StatutEleve
 from app.modules.paie.models import LignePaie, PaieMensuelle
-from app.modules.paiements.models import Echeance, StatutEcheance
 from app.shared.periode import dernier_jour, premier_jour
 
 
@@ -75,7 +74,10 @@ class LignePaieRepository:
 class CompteurElevesRepository:
     """Compte les élèves pour la formule de paie (§8.3 de
     docs/02-modele-donnees.md) — distinct du compteur d'affectation de
-    l'étape 5 (celui-ci est sensible à la période et à `base_calcul_paie`)."""
+    l'étape 5 (celui-ci est sensible à la période). Décision D4 : le
+    professeur est payé sur les élèves **inscrits**, qu'ils aient réglé ou
+    non leur mensualité — le cours a été donné, la trésorerie du centre est
+    une question distincte."""
 
     def __init__(self, session: AsyncSession) -> None:
         self._session = session
@@ -87,7 +89,6 @@ class CompteurElevesRepository:
         matiere_id: int,
         annee_scolaire_id: int,
         periode: str,
-        base_calcul: str,
     ) -> int:
         borne_debut = premier_jour(periode)
         borne_fin = dernier_jour(periode)
@@ -105,12 +106,6 @@ class CompteurElevesRepository:
                 | (InscriptionMatiere.date_fin >= borne_debut),
             )
         )
-
-        if base_calcul == "payants":
-            requete = requete.join(
-                Echeance,
-                (Echeance.eleve_id == Eleve.id) & (Echeance.periode == periode),
-            ).where(Echeance.statut.in_([StatutEcheance.PAYE, StatutEcheance.PARTIEL]))
 
         resultat = await self._session.execute(requete)
         return len(resultat.all())

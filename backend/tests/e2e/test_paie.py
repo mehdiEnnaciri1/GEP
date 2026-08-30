@@ -3,7 +3,8 @@ méthode de travail attendue). Couvrent au minimum : zéro élève sur une
 affectation, élève suspendu en milieu de mois, matière ajoutée en cours de
 mois, tarif modifié après génération (ne doit rien changer), tentative de
 régénération d'une paie VALIDEE (refusée), l'exemple nommé du §7.2 du cahier
-des charges, et la décision D4 (base_calcul_paie inscrits/payants)."""
+des charges, et la décision D4 (paie toujours sur les inscrits, jamais sur
+le statut de paiement)."""
 
 from __future__ import annotations
 
@@ -14,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.auth.models import RoleUtilisateur
 from app.modules.eleves.models import Eleve, InscriptionMatiere, StatutEleve
-from app.modules.referentiel.models import Parametre
 from tests.factories.professeurs import creer_affectation, creer_professeur
 from tests.factories.referentiel import (
     creer_annee_scolaire,
@@ -473,11 +473,12 @@ class TestGenerationPaie:
         assert statut_valide == "VALIDEE"
         assert statut_brouillon == "BROUILLON"
 
-    async def test_base_calcul_paie_inscrits_par_defaut(
+    async def test_base_calcul_paie_toujours_sur_les_inscrits(
         self, client: AsyncClient, session: AsyncSession
     ):
-        """D4 : sans paramètre défini, un élève inscrit mais dont l'échéance
-        du mois n'est pas payée compte quand même dans la paie du professeur."""
+        """D4 : un élève inscrit mais dont l'échéance du mois n'est pas payée
+        compte quand même dans la paie du professeur — le calcul ne dépend
+        jamais du statut de paiement."""
         jeton, utilisateur_id = await _jeton_admin(client, session)
         headers = {"Authorization": f"Bearer {jeton}"}
 
@@ -512,48 +513,6 @@ class TestGenerationPaie:
         await client.post("/api/paie/generer", json={"periode": PERIODE}, headers=headers)
         paies = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()
         assert paies[0]["total_cents"] == 2500
-
-    async def test_base_calcul_paie_payants_exclut_les_impayes(
-        self, client: AsyncClient, session: AsyncSession
-    ):
-        """D4, alternative 'payants' : seuls les élèves dont l'échéance du
-        mois est PAYE ou PARTIEL comptent."""
-        jeton, utilisateur_id = await _jeton_admin(client, session)
-        headers = {"Authorization": f"Bearer {jeton}"}
-
-        session.add(Parametre(cle="base_calcul_paie", valeur="payants", type_valeur="texte"))
-        await session.commit()
-
-        annee = await creer_annee_scolaire(session)
-        niveau = await creer_niveau(session)
-        matiere = await creer_matiere(session)
-        professeur = await creer_professeur(session)
-        await creer_tarif_professeur(
-            session,
-            annee_scolaire_id=annee.id,
-            niveau_code=niveau.code,
-            matiere_id=matiere.id,
-            montant_par_eleve_cents=2500,
-        )
-        await creer_affectation(
-            session,
-            professeur_id=professeur.id,
-            matiere_id=matiere.id,
-            niveau_code=niveau.code,
-            annee_scolaire_id=annee.id,
-        )
-        await _creer_eleve(
-            session,
-            utilisateur_id=utilisateur_id,
-            niveau_code=niveau.code,
-            annee_scolaire_id=annee.id,
-            matiere_id=matiere.id,
-            matricule="IMPAYE-2",
-        )
-
-        await client.post("/api/paie/generer", json={"periode": PERIODE}, headers=headers)
-        paies = (await client.get(f"/api/paie?periode={PERIODE}", headers=headers)).json()
-        assert paies[0]["total_cents"] == 0
 
     async def test_eleve_pack_compte_dans_chaque_matiere_du_niveau(
         self, client: AsyncClient, session: AsyncSession

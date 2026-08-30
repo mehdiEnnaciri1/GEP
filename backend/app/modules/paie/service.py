@@ -28,10 +28,8 @@ from app.modules.paie.repository import (
 from app.modules.paie.schemas import AjustementPaieRequete
 from app.modules.paiements.models import ModePaiement
 from app.modules.professeurs.repository import AffectationRepository, ProfesseurRepository
-from app.modules.referentiel.repository import ParametreRepository, TarifProfesseurRepository
+from app.modules.referentiel.repository import TarifProfesseurRepository
 from app.shared.periode import dernier_jour, periode_suivante, premier_jour
-
-_BASE_CALCUL_PAR_DEFAUT = "inscrits"  # décision D4
 
 
 class PaieService:
@@ -43,16 +41,10 @@ class PaieService:
         self._professeurs = ProfesseurRepository(session)
         self._affectations = AffectationRepository(session)
         self._tarifs_professeur = TarifProfesseurRepository(session)
-        self._parametres = ParametreRepository(session)
-
-    async def _base_calcul(self) -> str:
-        parametre = await self._parametres.get_by_cle("base_calcul_paie")
-        return parametre.valeur if parametre is not None else _BASE_CALCUL_PAR_DEFAUT
 
     async def generer(self, periode: str, utilisateur_id: int, adresse_ip: str | None) -> int:
         borne_debut = premier_jour(periode)
         borne_fin = dernier_jour(periode)
-        base_calcul = await self._base_calcul()
         compteur = 0
 
         for professeur in [p for p in await self._professeurs.lister() if p.actif]:
@@ -99,7 +91,6 @@ class PaieService:
                     matiere_id=affectation.matiere_id,
                     annee_scolaire_id=affectation.annee_scolaire_id,
                     periode=periode,
-                    base_calcul=base_calcul,
                 )
                 montant = nombre_eleves * tarif.montant_par_eleve_cents
                 total += montant

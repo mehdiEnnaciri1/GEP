@@ -76,12 +76,6 @@ PARAMETRES = [
         "entier",
         "Frais d'inscription en centimes (50 DH)",
     ),
-    (
-        "base_calcul_paie",
-        "inscrits",
-        "texte",
-        "inscrits | payants — voir décision D4",
-    ),
     ("nom_centre", "Centre", "texte", "Affiché sur les reçus et rapports"),
 ]
 
