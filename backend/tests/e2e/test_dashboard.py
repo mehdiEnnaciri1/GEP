@@ -66,14 +66,17 @@ async def _construire_jeu_de_donnees(session: AsyncSession, utilisateur_id: int)
     - nombre_professeurs = 3 (dont un rattaché à la seule paie BROUILLON)
     - encaissements_mensualites = 20000 + 15000 = 35000
     - encaissements_inscriptions = 5000
-    - montant_total_encaisse = 40000
+    - montant_total_encaisse ("Encaissé ce mois") = 35000 (mensualités
+      seules, les frais d'inscription ont leur propre carte)
     - montant_frais_inscription_cumules (vue CAISSIER, brut) = 5000
     - montant_frais_inscription_cumules (vue ADMIN, net du loyer) =
       frais_inscription(5000) - (charges(15000) - loyer(10000)) = 0
     - montant_impayes = (25000-10000) + (20000-5000) = 15000 + 15000 = 30000
     - total_charges = 10000 + 5000 = 15000
     - total_paie (hors BROUILLON) = 12000 (la paie BROUILLON à 99999 est ignorée)
-    - benefice_net = 40000 - 15000 - 12000 = 13000
+    - benefice_net = (35000 + 5000) - 15000 - 12000 = 13000 (le bénéfice net
+      somme mensualités ET frais d'inscription, contrairement à la carte
+      "Encaissé ce mois" ci-dessus)
     """
     annee = await creer_annee_scolaire(session)
     niveau_1bac = await creer_niveau(session, code="1BAC", ordre=5)
@@ -245,7 +248,9 @@ class TestIndicateurs:
         par_niveau = {n["niveau_code"]: n["nombre"] for n in d["nombre_eleves_par_niveau"]}
         assert par_niveau == {"1BAC": 2, "2BAC": 1}
         assert d["nombre_professeurs"] == 3  # 2 créés explicitement + 1 pour la paie BROUILLON
-        assert d["montant_total_encaisse_cents"] == 40000
+        # Mensualités seules (35000), pas +5000 de frais d'inscription — déjà
+        # sur leur propre carte, voir montant_frais_inscription_cumules_cents.
+        assert d["montant_total_encaisse_cents"] == 35000
         # Vue ADMIN : net du loyer, PAS le brut (5000) que voit le CAISSIER
         # (voir test_caissier_vue_restreinte_sans_charges_ni_paie_ni_benefice).
         assert d["montant_frais_inscription_cumules_cents"] == 0
@@ -269,7 +274,7 @@ class TestIndicateurs:
         )
         assert rep.status_code == 200
         d = rep.json()
-        assert d["montant_total_encaisse_cents"] == 40000
+        assert d["montant_total_encaisse_cents"] == 35000
         # Vue CAISSIER : le brut (5000), jamais le calcul net du loyer, qui
         # exposerait indirectement les charges à un rôle qui n'y a pas accès.
         assert d["montant_frais_inscription_cumules_cents"] == 5000

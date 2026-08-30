@@ -64,7 +64,11 @@ class DashboardService:
                 IndicateurNiveauEleves(niveau_code=niveau, nombre=nombre)
                 for niveau, nombre in par_niveau
             ],
-            montant_total_encaisse_cents=encaissements_mensualites + encaissements_inscriptions,
+            # « Encaissé ce mois » = mensualités seules, les frais
+            # d'inscription ont leur propre carte (montant_frais_inscription_
+            # cumules_cents) — ne pas les compter deux fois à l'écran. Le
+            # bénéfice net (ci-dessous) continue lui à sommer les deux.
+            montant_total_encaisse_cents=encaissements_mensualites,
             montant_frais_inscription_cumules_cents=encaissements_inscriptions,
             montant_impayes_cents=montant_impayes,
             nombre_professeurs=nombre_professeurs,
@@ -74,7 +78,15 @@ class DashboardService:
         restreints = await self.indicateurs_restreints(periode)
         total_charges = await self._dashboard.total_charges(periode)
         total_paie = await self._dashboard.total_paie_hors_brouillon(periode)
-        benefice_net = restreints.montant_total_encaisse_cents - total_charges - total_paie
+        # Le bénéfice net somme mensualités ET frais d'inscription (décision
+        # D2), contrairement à « Encaissé ce mois » qui n'affiche que les
+        # mensualités — les deux valeurs sources restent disponibles ici,
+        # séparément, avant que frais_inscription_nets ne les remplace plus bas.
+        encaissements_totaux = (
+            restreints.montant_total_encaisse_cents
+            + restreints.montant_frais_inscription_cumules_cents
+        )
+        benefice_net = encaissements_totaux - total_charges - total_paie
 
         # Frais d'inscription cumulés, vue ADMIN uniquement : frais moins les
         # charges HORS loyer — pas la somme brute que voit IndicateursRestreints

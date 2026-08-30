@@ -595,6 +595,10 @@ total_paie = Σ paie_mensuelle.total_cents WHERE periode = P AND statut <> 'BROU
 impayes = Σ (echeance.montant_du_cents - echeance.montant_paye_cents)
     WHERE periode = P AND statut <> 'PAYE'
 
+ENCAISSE_CE_MOIS = encaissements_mensualites   -- carte du dashboard, sans les
+                                                -- frais d'inscription (qui ont
+                                                -- leur propre carte, voir plus bas)
+
 BENEFICE_NET = encaissements_mensualites
              + encaissements_inscriptions
              - total_charges
@@ -608,6 +612,12 @@ FRAIS_INSCRIPTION_CUMULES =
     si CAISSIER : encaissements_inscriptions
     si ADMIN    : encaissements_inscriptions - (total_charges - total_loyer)
 ```
+
+`ENCAISSE_CE_MOIS` et `BENEFICE_NET` divergent volontairement : la carte
+« Encaissé ce mois » n'affiche que les mensualités pour ne pas compter deux
+fois les frais d'inscription (déjà sur leur propre carte), mais
+`BENEFICE_NET` doit rester une vraie somme de tous les encaissements du mois
+— il continue donc à additionner les deux.
 
 `FRAIS_INSCRIPTION_CUMULES` se calcule **différemment selon le rôle**, ce qui
 est inhabituel dans ce modèle mais nécessaire ici : le calcul ADMIN retranche
