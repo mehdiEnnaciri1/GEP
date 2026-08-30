@@ -16,7 +16,7 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { useGenererEcheances, useImpayes } from '@/features/paiements/hooks/usePaiements'
-import type { EcheanceImpayee } from '@/features/paiements/types'
+import type { EcheanceImpayee, StatutEcheance } from '@/features/paiements/types'
 import { useNiveaux } from '@/features/referentiel/hooks/useNiveaux'
 import { formaterMontant } from '@/lib/money'
 
@@ -117,7 +117,11 @@ function GroupeNiveau({
 export function PageImpayes() {
   const [periode, setPeriode] = useState(periodeCourante())
   const [niveauFiltre, setNiveauFiltre] = useState<string>('TOUS')
-  const { data: impayes, isLoading } = useImpayes(periode)
+  const [statutFiltre, setStatutFiltre] = useState<string>('TOUS')
+  const { data: impayes, isLoading } = useImpayes(
+    periode,
+    statutFiltre === 'TOUS' ? undefined : (statutFiltre as StatutEcheance),
+  )
   const { data: niveaux } = useNiveaux()
   const generer = useGenererEcheances()
   const [erreur, setErreur] = useState<string | null>(null)
@@ -148,8 +152,19 @@ export function PageImpayes() {
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-heading text-xl font-semibold">Impayés</h1>
+        <h1 className="font-heading text-xl font-semibold">Payé/Impayé</h1>
         <div className="flex items-end gap-2">
+          <Select value={statutFiltre} onValueChange={setStatutFiltre}>
+            <SelectTrigger className="bg-card">
+              <SelectValue placeholder="Tous les statuts" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="TOUS">Tous les statuts</SelectItem>
+              <SelectItem value="NON_PAYE">Non payé</SelectItem>
+              <SelectItem value="PARTIEL">Partiel</SelectItem>
+              <SelectItem value="PAYE">Payé</SelectItem>
+            </SelectContent>
+          </Select>
           <Select value={niveauFiltre} onValueChange={setNiveauFiltre}>
             <SelectTrigger className="bg-card">
               <SelectValue placeholder="Tous les niveaux" />
@@ -199,7 +214,9 @@ export function PageImpayes() {
       ) : groupes.length === 0 ? (
         <div className="flex flex-col items-center gap-3 py-10 text-center">
           <img src="/vide-finances.png" alt="" className="size-32" />
-          <p className="text-sm text-muted-foreground">Aucun impayé pour cette période.</p>
+          <p className="text-sm text-muted-foreground">
+            Aucune échéance pour cette sélection.
+          </p>
         </div>
       ) : (
         <div className="space-y-3">

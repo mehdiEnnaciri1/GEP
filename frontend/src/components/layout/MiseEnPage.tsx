@@ -53,7 +53,7 @@ const GROUPES: GroupeLiens[] = [
   {
     titre: 'Finances',
     liens: [
-      { vers: '/impayes', libelle: 'Impayés', icone: WalletIcon },
+      { vers: '/impayes', libelle: 'Payé/Impayé', icone: WalletIcon },
       { vers: '/paie', libelle: 'Paie', icone: BanknoteIcon, masquerPour: ['CAISSIER'] },
       { vers: '/charges', libelle: 'Charges', icone: ReceiptIcon, masquerPour: ['CAISSIER'] },
     ],

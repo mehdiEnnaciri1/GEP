@@ -15,6 +15,7 @@ from app.core.idempotence import obtenir_cle_idempotence
 from app.core.permissions import exige_role
 from app.db.session import get_session
 from app.modules.auth.models import RoleUtilisateur, Utilisateur
+from app.modules.paiements.models import StatutEcheance
 from app.modules.paiements.schemas import (
     AnnulationPaiement,
     EcheanceImpayeePublique,
@@ -104,10 +105,11 @@ async def historique_paiements(
 @router.get("/impayes", response_model=list[EcheanceImpayeePublique])
 async def lister_impayes(
     periode: str,
+    statut: StatutEcheance | None = None,
     session: AsyncSession = Depends(get_session),
     _utilisateur: Utilisateur = Depends(_ENCAISSER),
 ) -> list[EcheanceImpayeePublique]:
-    echeances_et_eleves = await PaiementService(session).lister_impayes(periode)
+    echeances_et_eleves = await PaiementService(session).lister_impayes(periode, statut)
     return [
         EcheanceImpayeePublique(
             id=echeance.id,

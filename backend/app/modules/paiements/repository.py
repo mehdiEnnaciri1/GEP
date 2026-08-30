@@ -41,12 +41,16 @@ class EcheanceRepository:
         await self._session.flush()
         return ligne
 
-    async def lister_impayes(self, periode: str) -> list[Echeance]:
-        resultat = await self._session.execute(
-            select(Echeance).where(
-                Echeance.periode == periode, Echeance.statut != StatutEcheance.PAYE
-            )
-        )
+    async def lister_impayes(
+        self, periode: str, statut: StatutEcheance | None = None
+    ) -> list[Echeance]:
+        """Sans `statut` : toutes les échéances de la période (payées ou
+        non) — le nom garde « impayes » pour ne pas casser l'URL existante,
+        mais la liste couvre désormais Payé/Impayé, filtrable par statut."""
+        conditions = [Echeance.periode == periode]
+        if statut is not None:
+            conditions.append(Echeance.statut == statut)
+        resultat = await self._session.execute(select(Echeance).where(*conditions))
         return list(resultat.scalars().all())
 
 

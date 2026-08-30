@@ -227,8 +227,10 @@ class PaiementService:
         await self._session.commit()
         return paiement
 
-    async def lister_impayes(self, periode: str) -> list[tuple[Echeance, Eleve]]:
-        echeances = await self._echeances.lister_impayes(periode)
+    async def lister_impayes(
+        self, periode: str, statut: StatutEcheance | None = None
+    ) -> list[tuple[Echeance, Eleve]]:
+        echeances = await self._echeances.lister_impayes(periode, statut)
         resultat: list[tuple[Echeance, Eleve]] = []
         for echeance in echeances:
             eleve = await self._eleves.get_by_id(echeance.eleve_id)

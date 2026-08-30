@@ -96,6 +96,83 @@ class TestGenerationEcheances:
         assert impayes.json()[0]["statut"] == "NON_PAYE"
         assert impayes.json()[0]["eleve_niveau_code"] == niveau_code
 
+    async def test_filtre_par_statut_paye_impaye(
+        self, client: AsyncClient, session: AsyncSession
+    ):
+        """La liste couvre Payé/Impayé par défaut, filtrable par statut —
+        voir l'adaptation frontend de la page Impayés."""
+        jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin1b@test.ma")
+        headers = {"Authorization": f"Bearer {jeton}"}
+        annee = await creer_annee_scolaire(session)
+        niveau = await creer_niveau(session)
+        matiere = await creer_matiere(session)
+        await creer_tarif_eleve(
+            session,
+            annee_scolaire_id=annee.id,
+            niveau_code=niveau.code,
+            matiere_id=matiere.id,
+            montant_cents=20000,
+        )
+
+        eleve_paye = (
+            await client.post(
+                "/api/eleves",
+                json={
+                    "nom": "Alaoui",
+                    "prenom": "Paye",
+                    "telephone_parent": "0600000000",
+                    "niveau_code": niveau.code,
+                    "date_inscription": "2025-09-15",
+                    "matiere_ids": [matiere.id],
+                },
+                headers=headers,
+            )
+        ).json()["id"]
+        eleve_impaye = (
+            await client.post(
+                "/api/eleves",
+                json={
+                    "nom": "Alaoui",
+                    "prenom": "Impaye",
+                    "telephone_parent": "0600000000",
+                    "niveau_code": niveau.code,
+                    "date_inscription": "2025-09-15",
+                    "matiere_ids": [matiere.id],
+                },
+                headers=headers,
+            )
+        ).json()["id"]
+
+        await client.post(
+            "/api/paiements/generer-echeances", json={"periode": PERIODE}, headers=headers
+        )
+        await client.post(
+            "/api/paiements/mensualite",
+            json={
+                "eleve_id": eleve_paye,
+                "periode": PERIODE,
+                "montant_cents": 20000,
+                "mode": "ESPECES",
+                "date_paiement": "2025-10-05",
+            },
+            headers=headers,
+        )
+
+        sans_filtre = await client.get(
+            f"/api/paiements/impayes?periode={PERIODE}", headers=headers
+        )
+        assert len(sans_filtre.json()) == 2
+
+        payes = await client.get(
+            f"/api/paiements/impayes?periode={PERIODE}&statut=PAYE", headers=headers
+        )
+        assert [e["eleve_id"] for e in payes.json()] == [eleve_paye]
+
+        non_payes = await client.get(
+            f"/api/paiements/impayes?periode={PERIODE}&statut=NON_PAYE", headers=headers
+        )
+        assert [e["eleve_id"] for e in non_payes.json()] == [eleve_impaye]
+
     async def test_eleve_avec_reduction_inscrit_a_trois_matieres(
         self, client: AsyncClient, session: AsyncSession
     ):
@@ -387,10 +464,19 @@ class TestEncaissementMensualite:
             },
             headers=headers,
         )
+        # Sans filtre de statut : la liste couvre Payé/Impayé, l'échéance
+        # soldée reste visible (avec statut PAYE).
         impayes_apres = await client.get(
             f"/api/paiements/impayes?periode={PERIODE}", headers=headers
         )
-        assert len(impayes_apres.json()) == 0  # PAYE n'apparaît plus dans les impayés
+        assert len(impayes_apres.json()) == 1
+        assert impayes_apres.json()[0]["statut"] == "PAYE"
+
+        # Filtrée sur NON_PAYE, elle disparaît.
+        non_payes = await client.get(
+            f"/api/paiements/impayes?periode={PERIODE}&statut=NON_PAYE", headers=headers
+        )
+        assert len(non_payes.json()) == 0
 
     async def test_echeance_inexistante_refuse(self, client: AsyncClient, session: AsyncSession):
         jeton = await _jeton(client, session, role=RoleUtilisateur.ADMIN, email="admin9@test.ma")
@@ -442,8 +528,11 @@ class TestAnnulation:
         )
         paiement_id = paiement.json()["id"]
 
+        # Sans filtre : la liste couvre Payé/Impayé, l'échéance soldée reste
+        # visible (avec statut PAYE) au lieu d'en être exclue.
         avant = await client.get(f"/api/paiements/impayes?periode={PERIODE}", headers=headers)
-        assert len(avant.json()) == 0  # PAYE, donc absent des impayés
+        assert len(avant.json()) == 1
+        assert avant.json()[0]["statut"] == "PAYE"
 
         annulation = await client.post(
             f"/api/paiements/{paiement_id}/annuler",

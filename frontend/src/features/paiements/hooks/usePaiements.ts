@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import { api } from '@/api/client'
-import type { EcheanceImpayee, ModePaiement, Paiement } from '@/features/paiements/types'
+import type {
+  EcheanceImpayee,
+  ModePaiement,
+  Paiement,
+  StatutEcheance,
+} from '@/features/paiements/types'
 
 function cleEleve(eleveId: number) {
   return ['eleves', 'detail', eleveId]
@@ -15,10 +20,14 @@ export function useHistoriquePaiements(eleveId: number | undefined) {
   })
 }
 
-export function useImpayes(periode: string) {
+export function useImpayes(periode: string, statut?: StatutEcheance) {
   return useQuery({
-    queryKey: ['paiements', 'impayes', periode],
-    queryFn: () => api<EcheanceImpayee[]>(`/paiements/impayes?periode=${periode}`),
+    queryKey: ['paiements', 'impayes', periode, statut],
+    queryFn: () => {
+      const params = new URLSearchParams({ periode })
+      if (statut) params.set('statut', statut)
+      return api<EcheanceImpayee[]>(`/paiements/impayes?${params.toString()}`)
+    },
   })
 }
 
